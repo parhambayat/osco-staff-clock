@@ -1,0 +1,17 @@
+{
+  "name": "Osco Lounge Clock",
+  "short_name": "Osco Clock",
+  "description": "Staff clock-in for Osco Lounge",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#FFFFFF",
+  "theme_color": "#CE1126",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

@@ -1,0 +1,453 @@
+'use client';
+
+import { useEffect, useRef, useState } from 'react';
+import Link from 'next/link';
+
+const MONTH_NAMES = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+const STAFF_KEY = 'osco_staff';
+
+function pad(n) { return String(n).padStart(2, '0'); }
+
+function formatDur(seconds) {
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  return `${h}h ${pad(m)}m`;
+}
+
+function loadStaff() {
+  try {
+    const raw = localStorage.getItem(STAFF_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
+function saveStaff(staff) {
+  localStorage.setItem(STAFF_KEY, JSON.stringify(staff));
+}
+
+function clearStaff() {
+  localStorage.removeItem(STAFF_KEY);
+  localStorage.removeItem('osco_staff_name');
+}
+
+export default function Home() {
+  const [staff, setStaff] = useState(null);
+  const [ready, setReady] = useState(false);
+  const [tab, setTab] = useState('today');
+  const [now, setNow] = useState(new Date());
+  const [openShift, setOpenShift] = useState(null);
+  const [todayShifts, setTodayShifts] = useState([]);
+  const [todaySeconds, setTodaySeconds] = useState(0);
+  const [monthTotals, setMonthTotals] = useState(new Array(12).fill(0));
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState('');
+
+  useEffect(() => {
+    setStaff(loadStaff());
+    setReady(true);
+  }, []);
+
+  useEffect(() => {
+    const t = setInterval(() => setNow(new Date()), 1000);
+    return () => clearInterval(t);
+  }, []);
+
+  useEffect(() => {
+    if (!staff?.id) return;
+    fetchSummary();
+    const t = setInterval(fetchSummary, 30000);
+    return () => clearInterval(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [staff?.id]);
+
+  async function fetchSummary() {
+    try {
+      const res = await fetch(
+        `/api/summary?staffId=${encodeURIComponent(staff.id)}&year=${new Date().getFullYear()}`
+      );
+      const data = await res.json();
+      if (data.needReregister) {
+        clearStaff();
+        setStaff(null);
+        return;
+      }
+      if (data.success) {
+        setOpenShift(data.openShift);
+        setTodayShifts(data.todayShifts);
+        setTodaySeconds(data.todaySeconds);
+        setMonthTotals(data.monthTotals);
+      }
+    } catch {
+      // keep last known state
+    }
+  }
+
+  async function submitPunch() {
+    setBusy(true);
+    setMessage('');
+    try {
+      const res = await fetch('/api/punch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ staffId: staff.id }),
+      });
+      const data = await res.json();
+      if (!data.success) {
+        if (data.needReregister) {
+          clearStaff();
+          setStaff(null);
+        }
+        setMessage(data.message || 'Could not record punch.');
+      } else {
+        await fetchSummary();
+      }
+    } catch {
+      setMessage('Network error — try again.');
+    }
+    setBusy(false);
+  }
+
+  const liveTodaySeconds = (() => {
+    if (!openShift) return todaySeconds;
+    const openIn = new Date(openShift.clock_in);
+    if (openIn.toDateString() !== now.toDateString()) return todaySeconds;
+    const completedOnly = todayShifts
+      .filter((s) => s.clock_out)
+      .reduce((sum, s) => sum + (new Date(s.clock_out) - new Date(s.clock_in)) / 1000, 0);
+    return completedOnly + Math.max(0, (now - openIn) / 1000);
+  })();
+
+  if (!ready) return null;
+
+  if (!staff) {
+    return (
+      <RegisterFlow
+        onRegistered={(s) => {
+          saveStaff(s);
+          setStaff(s);
+        }}
+      />
+    );
+  }
+
+  const clockedIn = !!openShift;
+
+  return (
+    <div className="app">
+      <div className="header">
+        <div className="brand">Osco Lounge</div>
+        <div className="net-status">{staff.name}</div>
+      </div>
+
+      <div className="tabs">
+        <div className={`tab ${tab === 'today' ? 'active' : ''}`} onClick={() => setTab('today')}>Today</div>
+        <div className={`tab ${tab === 'monthly' ? 'active' : ''}`} onClick={() => setTab('monthly')}>Monthly</div>
+      </div>
+
+      {tab === 'today' ? (
+        <TodayView
+          now={now}
+          clockedIn={clockedIn}
+          todayShifts={todayShifts}
+          todaySeconds={liveTodaySeconds}
+          busy={busy}
+          message={message}
+          onConfirm={submitPunch}
+        />
+      ) : (
+        <MonthlyView now={now} monthTotals={monthTotals} />
+      )}
+
+      <div className="footnote">
+        Clock-ins only work on Osco Lounge Wi-Fi.
+        <br />
+        <Link href="/manager" style={{ color: 'var(--gray)' }}>Manager</Link>
+      </div>
+    </div>
+  );
+}
+
+function RegisterFlow({ onRegistered }) {
+  const [step, setStep] = useState('form'); // form | code
+  const [name, setName] = useState('');
+  const [phone, setPhone] = useState('');
+  const [code, setCode] = useState('');
+  const [savedPhone, setSavedPhone] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const [info, setInfo] = useState('');
+
+  async function requestCode(e) {
+    e.preventDefault();
+    setBusy(true);
+    setError('');
+    setInfo('');
+    try {
+      const res = await fetch('/api/register/request', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, phone }),
+      });
+      const data = await res.json();
+      if (!data.success) {
+        setError(data.message || 'Could not start registration.');
+      } else {
+        setSavedPhone(data.phone);
+        setInfo(data.message);
+        setStep('code');
+      }
+    } catch {
+      setError('Network error — try again.');
+    }
+    setBusy(false);
+  }
+
+  async function verifyCode(e) {
+    e.preventDefault();
+    setBusy(true);
+    setError('');
+    try {
+      const res = await fetch('/api/register/verify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phone: savedPhone, code }),
+      });
+      const data = await res.json();
+      if (!data.success) {
+        setError(data.message || 'Invalid code.');
+      } else {
+        onRegistered(data.staff);
+      }
+    } catch {
+      setError('Network error — try again.');
+    }
+    setBusy(false);
+  }
+
+  return (
+    <div className="app">
+      <div className="name-gate">
+        <div className="brand">Osco Lounge</div>
+        <p className="gate-sub">
+          {step === 'form'
+            ? 'Register once with your name and phone. The manager will get a code in their panel.'
+            : 'Ask the manager for the code from their panel, then enter it here.'}
+        </p>
+
+        {step === 'form' ? (
+          <form onSubmit={requestCode}>
+            <input
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="Your name"
+              autoComplete="name"
+              required
+            />
+            <input
+              value={phone}
+              onChange={(e) => setPhone(e.target.value)}
+              placeholder="Phone number"
+              inputMode="tel"
+              autoComplete="tel"
+              required
+            />
+            {error && <div className="form-error">{error}</div>}
+            <button type="submit" disabled={busy}>{busy ? 'Sending…' : 'Send code to manager'}</button>
+          </form>
+        ) : (
+          <form onSubmit={verifyCode}>
+            <div className="gate-phone">{savedPhone}</div>
+            {info && <p className="gate-info">{info}</p>}
+            <input
+              value={code}
+              onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+              placeholder="6-digit code"
+              inputMode="numeric"
+              autoComplete="one-time-code"
+              required
+            />
+            {error && <div className="form-error">{error}</div>}
+            <button type="submit" disabled={busy}>{busy ? 'Checking…' : 'Complete registration'}</button>
+            <button type="button" className="btn-ghost" onClick={() => { setStep('form'); setCode(''); setError(''); }}>
+              Back
+            </button>
+          </form>
+        )}
+
+        <Link href="/manager" className="manager-link">Manager login</Link>
+      </div>
+    </div>
+  );
+}
+
+function TodayView({ now, clockedIn, todayShifts, todaySeconds, busy, message, onConfirm }) {
+  const weekday = now.toLocaleDateString(undefined, { weekday: 'long' });
+  const fullDate = now.toLocaleDateString(undefined, { month: 'long', day: 'numeric', year: 'numeric' });
+  const timeStr = [now.getHours(), now.getMinutes(), now.getSeconds()].map(pad).join(':');
+
+  return (
+    <div className="view">
+      <div className="date-block">
+        <div className="weekday">{weekday}</div>
+        <div className="full-date">{fullDate}</div>
+      </div>
+      <div className="clock">{timeStr}</div>
+      <div className="status-text">
+        You are <strong>{clockedIn ? 'clocked in' : 'clocked out'}</strong>
+        {todaySeconds > 0 && <> · Today <strong>{formatDur(todaySeconds)}</strong></>}
+      </div>
+
+      <SlideButton clockedIn={clockedIn} busy={busy} onConfirm={onConfirm} />
+
+      {message && <div className="helper-note" style={{ color: 'var(--red)' }}>{message}</div>}
+
+      <div className="mini-log-title">Today&apos;s Shifts</div>
+      {todayShifts.length === 0 ? (
+        <div className="empty-note">No entries yet.</div>
+      ) : (
+        todayShifts.map((s) => {
+          const inT = new Date(s.clock_in).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+          const isOpen = !s.clock_out;
+          const outT = isOpen
+            ? 'now'
+            : new Date(s.clock_out).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+          const dur = isOpen
+            ? (now - new Date(s.clock_in)) / 1000
+            : (new Date(s.clock_out) - new Date(s.clock_in)) / 1000;
+          return (
+            <div className="mini-log-entry" key={s.id}>
+              <span className="times">{inT} → {outT}</span>
+              <span className="dur">{formatDur(Math.max(0, dur))}</span>
+            </div>
+          );
+        })
+      )}
+    </div>
+  );
+}
+
+function MonthlyView({ now, monthTotals }) {
+  const currentMonth = now.getMonth();
+  return (
+    <div className="view">
+      <div className="year-label">{now.getFullYear()}</div>
+      {MONTH_NAMES.map((name, i) => {
+        const isCurrent = i === currentMonth;
+        const hasHours = monthTotals[i] > 0;
+        return (
+          <div className={`month-row ${isCurrent ? 'current' : ''}`} key={name}>
+            <div className="month-name">{name}</div>
+            <div className={`month-hours ${!hasHours ? 'empty' : ''}`}>
+              {hasHours ? formatDur(monthTotals[i]) : '—'}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function SlideButton({ clockedIn, busy, onConfirm }) {
+  const trackRef = useRef(null);
+  const knobRef = useRef(null);
+  const fillRef = useRef(null);
+  const draggingRef = useRef(false);
+  const startX = useRef(0);
+  const maxX = useRef(0);
+  const onConfirmRef = useRef(onConfirm);
+  const busyRef = useRef(busy);
+
+  useEffect(() => { onConfirmRef.current = onConfirm; }, [onConfirm]);
+  useEffect(() => { busyRef.current = busy; }, [busy]);
+
+  function getMaxX() {
+    if (!trackRef.current || !knobRef.current) return 0;
+    return trackRef.current.offsetWidth - knobRef.current.offsetWidth - 8;
+  }
+
+  function setPos(delta) {
+    if (!knobRef.current || !fillRef.current) return;
+    knobRef.current.style.left = (4 + delta) + 'px';
+    fillRef.current.style.width = (64 + delta) + 'px';
+  }
+
+  function resetPos(animate) {
+    if (!knobRef.current || !fillRef.current) return;
+    const t = animate ? '0.25s ease' : 'none';
+    knobRef.current.style.transition = `left ${t}`;
+    fillRef.current.style.transition = `width ${t}`;
+    setPos(0);
+  }
+
+  function onDown(e) {
+    if (busyRef.current) return;
+    draggingRef.current = true;
+    startX.current = e.touches ? e.touches[0].clientX : e.clientX;
+    maxX.current = getMaxX();
+    if (knobRef.current) knobRef.current.style.transition = 'none';
+    if (fillRef.current) fillRef.current.style.transition = 'none';
+  }
+
+  useEffect(() => {
+    function onMove(e) {
+      if (!draggingRef.current) return;
+      const x = e.touches ? e.touches[0].clientX : e.clientX;
+      let delta = x - startX.current;
+      delta = Math.max(0, Math.min(delta, maxX.current));
+      setPos(delta);
+    }
+
+    function onUp() {
+      if (!draggingRef.current) return;
+      draggingRef.current = false;
+      if (!knobRef.current || !fillRef.current) return;
+
+      knobRef.current.style.transition = 'left 0.25s ease';
+      fillRef.current.style.transition = 'width 0.25s ease';
+
+      const currentLeft = parseFloat(knobRef.current.style.left || '4');
+      const threshold = maxX.current * 0.82;
+
+      if (currentLeft - 4 >= threshold) {
+        setPos(maxX.current);
+        setTimeout(() => {
+          onConfirmRef.current();
+          resetPos(false);
+          requestAnimationFrame(() => {
+            if (knobRef.current) knobRef.current.style.transition = 'left 0.25s ease';
+            if (fillRef.current) fillRef.current.style.transition = 'width 0.25s ease';
+          });
+        }, 180);
+      } else {
+        resetPos(true);
+      }
+    }
+
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('touchmove', onMove, { passive: true });
+    window.addEventListener('mouseup', onUp);
+    window.addEventListener('touchend', onUp);
+    return () => {
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('touchmove', onMove);
+      window.removeEventListener('mouseup', onUp);
+      window.removeEventListener('touchend', onUp);
+    };
+  }, []);
+
+  return (
+    <div className="slider-wrap">
+      <div ref={trackRef} className={`slider-track ${clockedIn ? 'out' : ''} ${busy ? 'disabled' : ''}`}>
+        <div ref={fillRef} className="slider-fill" />
+        <div className="slider-label">{busy ? 'Recording…' : clockedIn ? 'Slide to clock out' : 'Slide to clock in'}</div>
+        <div ref={knobRef} className="slider-knob" onMouseDown={onDown} onTouchStart={onDown}>
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#CE1126" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M5 12h14M13 6l6 6-6 6" />
+          </svg>
+        </div>
+      </div>
+    </div>
+  );
+}
