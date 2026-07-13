@@ -40,7 +40,11 @@ withEnv({ LOCAL_DEV: 'false', CAFE_WIFI_IP: '' }, () => {
   assert.strictEqual(isWifiCheckEnabled(), true);
 });
 
-withEnv({ VERCEL: '1', LOCAL_DEV: 'true' }, () => {
+withEnv({ VERCEL: '', VERCEL_URL: '', LOCAL_DEV: 'true' }, () => {
+  assert.strictEqual(isWifiCheckEnabled(), false);
+});
+
+withEnv({ VERCEL_URL: 'osco-staff-clock.vercel.app', LOCAL_DEV: 'true' }, () => {
   assert.strictEqual(isWifiCheckEnabled(), true);
 });
 
