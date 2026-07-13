@@ -2,8 +2,7 @@ import { NextResponse } from 'next/server';
 import { getStaffById, getOpenShift, clockIn, clockOut } from '../../../lib/db';
 import {
   getClientIp,
-  isWifiCheckEnabled,
-  isAllowedCafeIp,
+  shouldRejectPunch,
   wifiRejectResponse,
 } from '../../../lib/wifi';
 
@@ -26,7 +25,7 @@ export async function POST(req) {
       );
     }
 
-    if (isWifiCheckEnabled() && !isAllowedCafeIp(ip)) {
+    if (shouldRejectPunch(ip)) {
       const reject = wifiRejectResponse(ip);
       return NextResponse.json(reject.body, { status: reject.status });
     }

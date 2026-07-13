@@ -1,8 +1,7 @@
 import assert from 'assert';
 import {
   getAllowedCafeIp,
-  isWifiCheckEnabled,
-  isAllowedCafeIp,
+  shouldRejectPunch,
   getClientIp,
 } from '../lib/wifi.js';
 
@@ -22,26 +21,22 @@ function withEnv(patch, fn) {
 
 withEnv({ CAFE_WIFI_IP: '37.40.226.51', LOCAL_DEV: 'false', SKIP_WIFI_CHECK: '' }, () => {
   assert.strictEqual(getAllowedCafeIp(), '37.40.226.51');
-  assert.strictEqual(isWifiCheckEnabled(), true);
-  assert.strictEqual(isAllowedCafeIp('37.40.226.51'), true);
-  assert.strictEqual(isAllowedCafeIp('1.2.3.4'), false);
+  assert.strictEqual(shouldRejectPunch('1.2.3.4'), true);
+  assert.strictEqual(shouldRejectPunch('37.40.226.51'), false);
 });
 
-withEnv({ CAFE_WIFI_IP: '37.40.226.51', LOCAL_DEV: 'true' }, () => {
-  assert.strictEqual(isWifiCheckEnabled(), false);
+withEnv({ OSCO_ENFORCE_WIFI: 'true', SKIP_WIFI_CHECK: 'true', LOCAL_DEV: 'true' }, () => {
+  assert.strictEqual(shouldRejectPunch('1.2.3.4'), true);
+  assert.strictEqual(shouldRejectPunch('37.40.226.51'), false);
 });
 
-withEnv({ LOCAL_DEV: 'false', SKIP_WIFI_CHECK: 'true' }, () => {
-  assert.strictEqual(isWifiCheckEnabled(), false);
+withEnv({ LOCAL_DEV: 'true' }, () => {
+  assert.strictEqual(shouldRejectPunch('1.2.3.4'), false);
 });
 
 withEnv({ LOCAL_DEV: 'false', CAFE_WIFI_IP: '' }, () => {
   assert.strictEqual(getAllowedCafeIp(), '37.40.226.51');
-  assert.strictEqual(isWifiCheckEnabled(), true);
-});
-
-withEnv({ OSCO_ENFORCE_WIFI: 'true', LOCAL_DEV: 'true' }, () => {
-  assert.strictEqual(isWifiCheckEnabled(), true);
+  assert.strictEqual(shouldRejectPunch('1.2.3.4'), true);
 });
 
 const fakeReq = (headers) => ({ headers: { get: (k) => headers[k.toLowerCase()] || null } });
