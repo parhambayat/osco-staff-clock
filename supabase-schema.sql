@@ -1,4 +1,4 @@
--- Run in Supabase SQL Editor when moving to production
+-- Run once in Supabase → SQL Editor → New query → Run
 
 create table if not exists staff (
   id text primary key,
@@ -18,7 +18,7 @@ create table if not exists pending (
 
 create table if not exists shifts (
   id text primary key,
-  staff_id text not null references staff(id),
+  staff_id text not null references staff(id) on delete cascade,
   staff_name text not null,
   clock_in timestamptz not null,
   clock_out timestamptz,
@@ -27,3 +27,9 @@ create table if not exists shifts (
 
 create index if not exists shifts_staff_id_idx on shifts(staff_id);
 create index if not exists shifts_clock_in_idx on shifts(clock_in);
+create index if not exists pending_phone_idx on pending(phone);
+
+-- Service role key bypasses RLS; keep tables locked from public anon access
+alter table staff enable row level security;
+alter table pending enable row level security;
+alter table shifts enable row level security;

@@ -190,9 +190,9 @@ function RegisterFlow({ onRegistered }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name, phone }),
       });
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
       if (!data.success) {
-        setError(data.message || 'Could not start registration.');
+        setError(data.message || `Could not start registration (${res.status}).`);
       } else {
         setSavedPhone(data.phone);
         setInfo(data.message);
