@@ -1,5 +1,11 @@
 import { NextResponse } from 'next/server';
-import { getStaffById, getOpenShift, clockIn, clockOut, isLocalDevMode } from '../../../lib/db';
+import {
+  getStaffById,
+  getOpenShift,
+  clockIn,
+  clockOut,
+  isLocalDevMode,
+} from '../../../lib/db';
 
 const ALLOWED_IP = process.env.CAFE_WIFI_IP;
 
@@ -10,53 +16,57 @@ function getClientIp(req) {
 }
 
 export async function POST(req) {
-  const ip = getClientIp(req);
-
-  let body;
   try {
-    body = await req.json();
-  } catch {
-    return NextResponse.json({ success: false, message: 'Invalid request body.' }, { status: 400 });
-  }
+    const ip = getClientIp(req);
 
-  const staffId = (body.staffId || '').trim();
-  if (!staffId) {
-    return NextResponse.json({ success: false, message: 'Staff session required. Please register.' }, { status: 400 });
-  }
+    let body;
+    try {
+      body = await req.json();
+    } catch {
+      return NextResponse.json({ success: false, message: 'Invalid request body.' }, { status: 400 });
+    }
 
-  const staff = getStaffById(staffId);
-  if (!staff) {
-    return NextResponse.json(
-      { success: false, message: 'Staff not found. Please register again.', needReregister: true },
-      { status: 404 }
-    );
-  }
-
-  // Production: only café Wi-Fi. Local preview skips this.
-  if (!isLocalDevMode()) {
-    if (!ALLOWED_IP) {
+    const staffId = (body.staffId || '').trim();
+    if (!staffId) {
       return NextResponse.json(
-        { success: false, message: 'Server is missing CAFE_WIFI_IP configuration.' },
-        { status: 500 }
+        { success: false, message: 'Staff session required. Please register.' },
+        { status: 400 }
       );
     }
-    if (ip !== ALLOWED_IP) {
+
+    const staff = await getStaffById(staffId);
+    if (!staff) {
+      return NextResponse.json(
+        { success: false, message: 'Staff not found. Please register again.', needReregister: true },
+        { status: 404 }
+      );
+    }
+
+    // Enforce café Wi-Fi in production (skip while LOCAL_DEV / missing IP for first launch)
+    const skipIp = isLocalDevMode() || process.env.SKIP_WIFI_CHECK === 'true' || !ALLOWED_IP;
+    if (!skipIp && ip !== ALLOWED_IP) {
       return NextResponse.json(
         { success: false, message: 'Not connected to Osco Lounge Wi-Fi.', detectedIp: ip },
         { status: 403 }
       );
     }
-  }
 
-  const open = getOpenShift(staff.id);
-  if (open) {
-    const result = clockOut(open.id);
-    if (result.error) {
-      return NextResponse.json({ success: false, message: result.error }, { status: 500 });
+    const open = await getOpenShift(staff.id);
+    if (open) {
+      const result = await clockOut(open.id);
+      if (result.error) {
+        return NextResponse.json({ success: false, message: result.error }, { status: 500 });
+      }
+      return NextResponse.json({ success: true, action: 'out', shift: result.shift });
     }
-    return NextResponse.json({ success: true, action: 'out', shift: result.shift });
-  }
 
-  const shift = clockIn(staff);
-  return NextResponse.json({ success: true, action: 'in', shift });
+    const shift = await clockIn(staff);
+    if (shift?.error) {
+      return NextResponse.json({ success: false, message: shift.error }, { status: 503 });
+    }
+    return NextResponse.json({ success: true, action: 'in', shift });
+  } catch (e) {
+    console.error('[punch]', e);
+    return NextResponse.json({ success: false, message: e.message || 'Server error' }, { status: 500 });
+  }
 }

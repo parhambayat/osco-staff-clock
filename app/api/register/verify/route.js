@@ -2,31 +2,40 @@ import { NextResponse } from 'next/server';
 import { verifyPending } from '../../../../lib/db';
 
 export async function POST(req) {
-  let body;
   try {
-    body = await req.json();
-  } catch {
-    return NextResponse.json({ success: false, message: 'Invalid request.' }, { status: 400 });
+    let body;
+    try {
+      body = await req.json();
+    } catch {
+      return NextResponse.json({ success: false, message: 'Invalid request.' }, { status: 400 });
+    }
+
+    const phone = (body.phone || '').trim();
+    const code = (body.code || '').trim();
+
+    if (!phone || !code) {
+      return NextResponse.json({ success: false, message: 'Phone and code are required.' }, { status: 400 });
+    }
+
+    const result = await verifyPending({ phone, code });
+    if (result.error) {
+      const status = result.error.includes('Database') ? 503 : 400;
+      return NextResponse.json({ success: false, message: result.error }, { status });
+    }
+
+    return NextResponse.json({
+      success: true,
+      staff: {
+        id: result.staff.id,
+        name: result.staff.name,
+        phone: result.staff.phone,
+      },
+    });
+  } catch (e) {
+    console.error('[register/verify]', e);
+    return NextResponse.json(
+      { success: false, message: e.message || 'Server error' },
+      { status: 500 }
+    );
   }
-
-  const phone = (body.phone || '').trim();
-  const code = (body.code || '').trim();
-
-  if (!phone || !code) {
-    return NextResponse.json({ success: false, message: 'Phone and code are required.' }, { status: 400 });
-  }
-
-  const result = verifyPending({ phone, code });
-  if (result.error) {
-    return NextResponse.json({ success: false, message: result.error }, { status: 400 });
-  }
-
-  return NextResponse.json({
-    success: true,
-    staff: {
-      id: result.staff.id,
-      name: result.staff.name,
-      phone: result.staff.phone,
-    },
-  });
 }

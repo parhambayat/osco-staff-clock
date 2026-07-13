@@ -1,10 +1,11 @@
 import { NextResponse } from 'next/server';
+import { checkManagerCredentials } from '../../../../lib/db';
 import {
-  checkManagerCredentials,
-  createManagerSession,
-  destroyManagerSession,
-} from '../../../../lib/db';
-import { SESSION_COOKIE, getSessionToken, requireManager } from '../../../../lib/auth';
+  SESSION_COOKIE,
+  createManagerToken,
+  sessionCookieOptions,
+} from '../../../../lib/session';
+import { getSessionToken, requireManager } from '../../../../lib/auth';
 
 export async function POST(req) {
   let body;
@@ -21,20 +22,21 @@ export async function POST(req) {
     return NextResponse.json({ success: false, message: 'Wrong username or password.' }, { status: 401 });
   }
 
-  const token = createManagerSession();
+  const token = createManagerToken();
+  const opts = sessionCookieOptions(token);
   const res = NextResponse.json({ success: true });
-  res.cookies.set(SESSION_COOKIE, token, {
-    httpOnly: true,
-    sameSite: 'lax',
-    path: '/',
-    maxAge: 7 * 24 * 60 * 60,
+  res.cookies.set(SESSION_COOKIE, opts.value, {
+    httpOnly: opts.httpOnly,
+    sameSite: opts.sameSite,
+    path: opts.path,
+    secure: opts.secure,
+    maxAge: opts.maxAge,
   });
   return res;
 }
 
 export async function DELETE() {
-  const token = getSessionToken();
-  destroyManagerSession(token);
+  getSessionToken();
   const res = NextResponse.json({ success: true });
   res.cookies.set(SESSION_COOKIE, '', { httpOnly: true, path: '/', maxAge: 0 });
   return res;
