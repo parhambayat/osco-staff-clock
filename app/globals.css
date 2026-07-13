@@ -94,6 +94,28 @@ body {
   margin-top: 8px;
 }
 .gate-sub { color: var(--gray); font-size: 13px; margin: 16px 0 8px; line-height: 1.5; }
+.mode-tabs {
+  display: flex;
+  gap: 0;
+  margin: 18px 0 8px;
+  border: 1px solid var(--gray-light);
+  border-radius: 10px;
+  overflow: hidden;
+}
+.mode-tab {
+  flex: 1;
+  border: none;
+  background: transparent;
+  padding: 11px 8px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--gray);
+  cursor: pointer;
+}
+.mode-tab.active {
+  background: var(--red);
+  color: var(--white);
+}
 .gate-info { color: var(--black); font-size: 13px; margin: 8px 0 4px; line-height: 1.45; }
 .gate-phone { font-family: 'Space Mono', monospace; font-size: 14px; margin-top: 12px; }
 .form-error { color: var(--red); font-size: 13px; margin: 8px 0; }

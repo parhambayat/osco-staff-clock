@@ -171,6 +171,7 @@ export default function Home() {
 }
 
 function RegisterFlow({ onRegistered }) {
+  const [mode, setMode] = useState('register'); // register | restore
   const [step, setStep] = useState('form'); // form | code
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
@@ -180,20 +181,35 @@ function RegisterFlow({ onRegistered }) {
   const [error, setError] = useState('');
   const [info, setInfo] = useState('');
 
+  function switchMode(next) {
+    setMode(next);
+    setStep('form');
+    setCode('');
+    setError('');
+    setInfo('');
+  }
+
   async function requestCode(e) {
     e.preventDefault();
     setBusy(true);
     setError('');
     setInfo('');
     try {
-      const res = await fetch('/api/register/request', {
+      const endpoint = mode === 'restore' ? '/api/register/restore' : '/api/register/request';
+      const body = mode === 'restore' ? { phone } : { name, phone };
+      const res = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, phone }),
+        body: JSON.stringify(body),
       });
       const data = await res.json().catch(() => ({}));
       if (!data.success) {
-        setError(data.message || `Could not start registration (${res.status}).`);
+        if (data.alreadyRegistered) {
+          setError(data.message);
+          setMode('restore');
+        } else {
+          setError(data.message || `Could not continue (${res.status}).`);
+        }
       } else {
         setSavedPhone(data.phone);
         setInfo(data.message);
@@ -210,12 +226,13 @@ function RegisterFlow({ onRegistered }) {
     setBusy(true);
     setError('');
     try {
-      const res = await fetch('/api/register/verify', {
+      const endpoint = mode === 'restore' ? '/api/register/restore-verify' : '/api/register/verify';
+      const res = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ phone: savedPhone, code }),
       });
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
       if (!data.success) {
         setError(data.message || 'Invalid code.');
       } else {
@@ -227,25 +244,49 @@ function RegisterFlow({ onRegistered }) {
     setBusy(false);
   }
 
+  const subText =
+    step === 'code'
+      ? 'Ask the manager for the code from their panel, then enter it here.'
+      : mode === 'restore'
+        ? 'Enter the phone you registered with. The manager will get a code to open your account on this phone.'
+        : 'New here? Register once with your name and phone. The manager will get a code in their panel.';
+
   return (
     <div className="app">
       <div className="name-gate">
         <div className="brand">Osco Lounge</div>
-        <p className="gate-sub">
-          {step === 'form'
-            ? 'Register once with your name and phone. The manager will get a code in their panel.'
-            : 'Ask the manager for the code from their panel, then enter it here.'}
-        </p>
+        <p className="gate-sub">{subText}</p>
+
+        {step === 'form' && (
+          <div className="mode-tabs">
+            <button
+              type="button"
+              className={`mode-tab ${mode === 'register' ? 'active' : ''}`}
+              onClick={() => switchMode('register')}
+            >
+              New register
+            </button>
+            <button
+              type="button"
+              className={`mode-tab ${mode === 'restore' ? 'active' : ''}`}
+              onClick={() => switchMode('restore')}
+            >
+              Already registered
+            </button>
+          </div>
+        )}
 
         {step === 'form' ? (
           <form onSubmit={requestCode}>
-            <input
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="Your name"
-              autoComplete="name"
-              required
-            />
+            {mode === 'register' && (
+              <input
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="Your name"
+                autoComplete="name"
+                required
+              />
+            )}
             <input
               value={phone}
               onChange={(e) => setPhone(e.target.value)}
@@ -255,7 +296,9 @@ function RegisterFlow({ onRegistered }) {
               required
             />
             {error && <div className="form-error">{error}</div>}
-            <button type="submit" disabled={busy}>{busy ? 'Sending…' : 'Send code to manager'}</button>
+            <button type="submit" disabled={busy}>
+              {busy ? 'Sending…' : mode === 'restore' ? 'Send restore code' : 'Send code to manager'}
+            </button>
           </form>
         ) : (
           <form onSubmit={verifyCode}>
@@ -270,8 +313,14 @@ function RegisterFlow({ onRegistered }) {
               required
             />
             {error && <div className="form-error">{error}</div>}
-            <button type="submit" disabled={busy}>{busy ? 'Checking…' : 'Complete registration'}</button>
-            <button type="button" className="btn-ghost" onClick={() => { setStep('form'); setCode(''); setError(''); }}>
+            <button type="submit" disabled={busy}>
+              {busy ? 'Checking…' : mode === 'restore' ? 'Open my account' : 'Complete registration'}
+            </button>
+            <button
+              type="button"
+              className="btn-ghost"
+              onClick={() => { setStep('form'); setCode(''); setError(''); setInfo(''); }}
+            >
               Back
             </button>
           </form>
