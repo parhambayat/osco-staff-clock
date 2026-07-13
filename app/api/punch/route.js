@@ -45,8 +45,9 @@ export async function POST(req) {
     // Enforce café Wi-Fi in production (skip while LOCAL_DEV / missing IP for first launch)
     const skipIp = isLocalDevMode() || process.env.SKIP_WIFI_CHECK === 'true' || !ALLOWED_IP;
     if (!skipIp && ip !== ALLOWED_IP) {
+      console.warn('[punch] wifi reject', { staffId: staff.id, ip });
       return NextResponse.json(
-        { success: false, message: 'Not connected to Osco Lounge Wi-Fi.', detectedIp: ip },
+        { success: false, message: 'Not connected to Osco Lounge Wi-Fi.' },
         { status: 403 }
       );
     }

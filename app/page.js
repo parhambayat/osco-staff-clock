@@ -85,6 +85,7 @@ export default function Home() {
   }
 
   async function submitPunch() {
+    if (busy) return;
     setBusy(true);
     setMessage('');
     try {
@@ -93,7 +94,7 @@ export default function Home() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ staffId: staff.id }),
       });
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
       if (!data.success) {
         if (data.needReregister) {
           clearStaff();
@@ -358,6 +359,7 @@ function SlideButton({ clockedIn, busy, onConfirm }) {
   const maxX = useRef(0);
   const onConfirmRef = useRef(onConfirm);
   const busyRef = useRef(busy);
+  const confirmingRef = useRef(false);
 
   useEffect(() => { onConfirmRef.current = onConfirm; }, [onConfirm]);
   useEffect(() => { busyRef.current = busy; }, [busy]);
@@ -382,7 +384,7 @@ function SlideButton({ clockedIn, busy, onConfirm }) {
   }
 
   function onDown(e) {
-    if (busyRef.current) return;
+    if (busyRef.current || confirmingRef.current) return;
     draggingRef.current = true;
     startX.current = e.touches ? e.touches[0].clientX : e.clientX;
     maxX.current = getMaxX();
@@ -411,14 +413,25 @@ function SlideButton({ clockedIn, busy, onConfirm }) {
       const threshold = maxX.current * 0.82;
 
       if (currentLeft - 4 >= threshold) {
+        if (confirmingRef.current || busyRef.current) {
+          resetPos(true);
+          return;
+        }
+        confirmingRef.current = true;
         setPos(maxX.current);
         setTimeout(() => {
-          onConfirmRef.current();
-          resetPos(false);
-          requestAnimationFrame(() => {
-            if (knobRef.current) knobRef.current.style.transition = 'left 0.25s ease';
-            if (fillRef.current) fillRef.current.style.transition = 'width 0.25s ease';
-          });
+          try {
+            onConfirmRef.current();
+          } finally {
+            resetPos(false);
+            setTimeout(() => {
+              confirmingRef.current = false;
+            }, 800);
+            requestAnimationFrame(() => {
+              if (knobRef.current) knobRef.current.style.transition = 'left 0.25s ease';
+              if (fillRef.current) fillRef.current.style.transition = 'width 0.25s ease';
+            });
+          }
         }, 180);
       } else {
         resetPos(true);

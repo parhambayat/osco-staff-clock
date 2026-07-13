@@ -36,13 +36,14 @@ export async function POST(req) {
       `Enter this code on the staff phone to approve registration.\n` +
       `(Expires in 30 minutes)`;
 
-    const sent = await sendManagerWhatsApp(message);
+    // Don't block registration on WhatsApp delivery
+    void sendManagerWhatsApp(message).catch((e) => console.error('[whatsapp]', e.message));
 
     return NextResponse.json({
       success: true,
       phone: pending.phone,
       managerWhatsApp: managerWhatsAppNumber(),
-      delivery: sent.via,
+      delivery: 'panel',
       message: 'Ask the manager for the code (shown in Manager → Pending), then enter it here.',
     });
   } catch (e) {

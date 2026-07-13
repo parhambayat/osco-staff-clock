@@ -29,7 +29,10 @@ create index if not exists shifts_staff_id_idx on shifts(staff_id);
 create index if not exists shifts_clock_in_idx on shifts(clock_in);
 create index if not exists pending_phone_idx on pending(phone);
 
--- Service role key bypasses RLS; keep tables locked from public anon access
+-- Only one open (clocked-in) shift per staff member
+create unique index if not exists shifts_one_open_per_staff
+  on shifts (staff_id) where clock_out is null;
+
 alter table staff enable row level security;
 alter table pending enable row level security;
 alter table shifts enable row level security;

@@ -59,7 +59,7 @@ export default function ManagerPage() {
   useEffect(() => {
     if (!authed) return;
     loadStaff();
-    const t = setInterval(loadStaff, 5000);
+    const t = setInterval(loadStaff, 10000);
     return () => clearInterval(t);
   }, [authed]);
 

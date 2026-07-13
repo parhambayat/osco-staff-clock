@@ -6,6 +6,7 @@ import {
   getStaffById,
 } from '../../../../lib/db';
 import { requireManager } from '../../../../lib/auth';
+import { cafeDateKey, cafeMonthIndex, cafeYear } from '../../../../lib/time';
 
 export async function GET(req) {
   try {
@@ -17,7 +18,7 @@ export async function GET(req) {
     const { searchParams } = new URL(req.url);
     const staffId = searchParams.get('staffId');
     const date = searchParams.get('date');
-    const year = Number(searchParams.get('year')) || new Date().getFullYear();
+    const year = Number(searchParams.get('year')) || cafeYear();
 
     if (!staffId) {
       return NextResponse.json({ success: false, message: 'staffId required' }, { status: 400 });
@@ -43,16 +44,11 @@ export async function GET(req) {
       const outD = s.clock_out ? new Date(s.clock_out) : new Date(nowMs);
       const sec = Math.max(0, (outD - inD) / 1000);
 
-      if (inD.getFullYear() === year) {
-        monthTotals[inD.getMonth()] += sec;
+      if (cafeYear(inD) === year) {
+        monthTotals[cafeMonthIndex(inD)] += sec;
       }
 
-      const key = [
-        inD.getFullYear(),
-        String(inD.getMonth() + 1).padStart(2, '0'),
-        String(inD.getDate()).padStart(2, '0'),
-      ].join('-');
-
+      const key = cafeDateKey(inD);
       if (!dayMap[key]) dayMap[key] = { date: key, seconds: 0, shifts: [] };
       dayMap[key].seconds += sec;
       dayMap[key].shifts.push(s);
@@ -71,6 +67,7 @@ export async function GET(req) {
       monthTotals,
       days,
       dayDetail,
+      cafeTz: 'Asia/Muscat',
     });
   } catch (e) {
     console.error('[manager/shifts GET]', e);
