@@ -36,7 +36,12 @@ withEnv({ LOCAL_DEV: 'false', SKIP_WIFI_CHECK: 'true' }, () => {
 });
 
 withEnv({ LOCAL_DEV: 'false', CAFE_WIFI_IP: '' }, () => {
-  assert.strictEqual(isWifiCheckEnabled(), false);
+  assert.strictEqual(getAllowedCafeIp(), '37.40.226.51');
+  assert.strictEqual(isWifiCheckEnabled(), true);
+});
+
+withEnv({ VERCEL: '1', LOCAL_DEV: 'true' }, () => {
+  assert.strictEqual(isWifiCheckEnabled(), true);
 });
 
 const fakeReq = (headers) => ({ headers: { get: (k) => headers[k.toLowerCase()] || null } });
