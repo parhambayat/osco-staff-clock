@@ -23,9 +23,16 @@
 داخل پنل منیجر دستورالعمل CallMeBot هست. بعد از زدن API key، کدها مستقیم به `+96898983134` می‌آیند.
 تا قبل از آن، کدها در بخش **Pending** پنل منیجر دیده می‌شوند.
 
-### ورود/خروج فقط روی Wi‑Fi کافه
-در production مقدار `LOCAL_DEV=false` و `CAFE_WIFI_IP` درست باشد.
-الان برای تست لوکال `LOCAL_DEV=true` است (چک IP خاموش).
+### ورود/خروج فقط روی Wi‑Fi کافه (مودم Omantel)
+پرسنل باید از **لینک آنلاین** (`https://osco-staff-clock.vercel.app`) استفاده کنند، نه IP لوکال کامپیوتر.
+
+در **Vercel → Settings → Environment Variables** این‌ها را بگذار:
+- `LOCAL_DEV` = `false`
+- `CAFE_WIFI_IP` = `37.40.226.51` (IP عمومی مودم BROVI کافه)
+
+بعد از ذخیره، یک **Redeploy** بزن. از وای‌فای دیگر یا اینترنت خط باید پیام *Not connected to Osco Lounge Wi-Fi* بیاید.
+
+برای تست روی همین PC کافه `LOCAL_DEV=true` بگذار (چک IP خاموش می‌شود).
 
 ---
 

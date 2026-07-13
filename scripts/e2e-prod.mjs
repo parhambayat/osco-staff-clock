@@ -49,15 +49,19 @@ function assert(cond, msg) {
   assert(r.json.success && r.json.staff?.id, 'verify failed');
   const staffId = r.json.staff.id;
 
-  // 5 punch in
+  // 5 punch — from outside café Wi-Fi must be blocked when CAFE_WIFI_IP is set on Vercel
   r = await req('/api/punch', { method: 'POST', body: JSON.stringify({ staffId }) });
-  results.push(['punch-in', r.status, r.ms, r.json.success, r.json.action]);
-  assert(r.json.success && r.json.action === 'in', `punch in failed: ${JSON.stringify(r.json)}`);
+  const wifiBlocked =
+    r.status === 403 && /Wi-?Fi/i.test(r.json.message || '');
+  results.push(['punch-wifi', r.status, r.ms, wifiBlocked ? 'blocked' : r.json.action]);
+  assert(wifiBlocked || (r.json.success && r.json.action === 'in'), `punch unexpected: ${JSON.stringify(r.json)}`);
 
-  // 6 double punch race (should clock out or reuse, not create two opens)
-  r = await req('/api/punch', { method: 'POST', body: JSON.stringify({ staffId }) });
-  results.push(['punch-out', r.status, r.ms, r.json.success, r.json.action]);
-  assert(r.json.success && r.json.action === 'out', `punch out failed: ${JSON.stringify(r.json)}`);
+  if (!wifiBlocked) {
+    // 6 double punch (wifi check not active in this environment)
+    r = await req('/api/punch', { method: 'POST', body: JSON.stringify({ staffId }) });
+    results.push(['punch-out', r.status, r.ms, r.json.success, r.json.action]);
+    assert(r.json.success && r.json.action === 'out', `punch out failed: ${JSON.stringify(r.json)}`);
+  }
 
   // 7 summary
   r = await req(`/api/summary?staffId=${encodeURIComponent(staffId)}&year=2026`);

@@ -1,19 +1,11 @@
 import { NextResponse } from 'next/server';
+import { getStaffById, getOpenShift, clockIn, clockOut } from '../../../lib/db';
 import {
-  getStaffById,
-  getOpenShift,
-  clockIn,
-  clockOut,
-  isLocalDevMode,
-} from '../../../lib/db';
-
-const ALLOWED_IP = process.env.CAFE_WIFI_IP;
-
-function getClientIp(req) {
-  const fwd = req.headers.get('x-forwarded-for');
-  if (fwd) return fwd.split(',')[0].trim();
-  return req.headers.get('x-real-ip') || 'unknown';
-}
+  getClientIp,
+  isWifiCheckEnabled,
+  isAllowedCafeIp,
+  wifiRejectResponse,
+} from '../../../lib/wifi';
 
 export async function POST(req) {
   try {
@@ -34,21 +26,16 @@ export async function POST(req) {
       );
     }
 
+    if (isWifiCheckEnabled() && !isAllowedCafeIp(ip)) {
+      const reject = wifiRejectResponse(ip);
+      return NextResponse.json(reject.body, { status: reject.status });
+    }
+
     const staff = await getStaffById(staffId);
     if (!staff) {
       return NextResponse.json(
         { success: false, message: 'Staff not found. Please register again.', needReregister: true },
         { status: 404 }
-      );
-    }
-
-    // Enforce café Wi-Fi in production (skip while LOCAL_DEV / missing IP for first launch)
-    const skipIp = isLocalDevMode() || process.env.SKIP_WIFI_CHECK === 'true' || !ALLOWED_IP;
-    if (!skipIp && ip !== ALLOWED_IP) {
-      console.warn('[punch] wifi reject', { staffId: staff.id, ip });
-      return NextResponse.json(
-        { success: false, message: 'Not connected to Osco Lounge Wi-Fi.' },
-        { status: 403 }
       );
     }
 
