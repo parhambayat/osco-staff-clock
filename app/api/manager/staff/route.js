@@ -19,6 +19,21 @@ function dbNotConfigured() {
   );
 }
 
+/** Leftover accounts from scripts/e2e-prod.mjs (name like "QA 2031"). */
+function isQaTestStaff(staff) {
+  return /^QA\b/i.test(String(staff?.name || '').trim());
+}
+
+async function removeQaTestStaff(staffList) {
+  const qa = (staffList || []).filter(isQaTestStaff);
+  const removed = [];
+  for (const s of qa) {
+    const result = await deleteStaff(s.id);
+    if (!result.error) removed.push({ id: s.id, name: s.name, phone: s.phone });
+  }
+  return removed;
+}
+
 export async function GET() {
   try {
     const auth = requireManager();
@@ -27,6 +42,8 @@ export async function GET() {
     }
 
     if (!hasDatabase() && !isLocalDevMode()) return dbNotConfigured();
+
+    await removeQaTestStaff(await listStaff());
 
     return NextResponse.json({
       success: true,
