@@ -54,7 +54,7 @@ function cookieHeaderFrom(res) {
     process.exit(1);
   }
 
-  const qa = (list.json.staff || []).filter((s) => /^QA\b/i.test(String(s.name || '').trim()));
+  const qa = (list.json.staff || []).filter((s) => /^QA \d+$/i.test(String(s.name || '').trim()));
   const deleted = [];
   const failed = [];
 

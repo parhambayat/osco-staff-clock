@@ -21,7 +21,7 @@ function dbNotConfigured() {
 
 /** Leftover accounts from scripts/e2e-prod.mjs (name like "QA 2031"). */
 function isQaTestStaff(staff) {
-  return /^QA\b/i.test(String(staff?.name || '').trim());
+  return /^QA \d+$/i.test(String(staff?.name || '').trim());
 }
 
 async function removeQaTestStaff(staffList) {
