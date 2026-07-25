@@ -174,6 +174,31 @@ export default function ManagerPage() {
     }
   }
 
+  async function removeStaff(staffId, staffName) {
+    if (!confirm(`Delete staff “${staffName}”? Their shifts will be removed too.`)) return;
+    setBusy(true);
+    setMessage('');
+    try {
+      const res = await fetch(`/api/manager/staff?id=${encodeURIComponent(staffId)}`, {
+        method: 'DELETE',
+      });
+      const data = await res.json();
+      if (!data.success) {
+        setMessage(data.message || 'Delete failed');
+      } else {
+        if (selectedId === staffId) {
+          setSelectedId(null);
+          setDetail(null);
+        }
+        setMessage('Staff deleted.');
+        await loadStaff();
+      }
+    } catch {
+      setMessage('Network error');
+    }
+    setBusy(false);
+  }
+
   if (!authChecked) return null;
 
   if (!authed) {
@@ -266,6 +291,14 @@ export default function ManagerPage() {
               <div className="full-date">{detail.staff.name}</div>
               <div className="muted">{detail.staff.phone}</div>
             </div>
+            <button
+              type="button"
+              className="text-btn"
+              disabled={busy}
+              onClick={() => removeStaff(detail.staff.id, detail.staff.name)}
+            >
+              Delete staff
+            </button>
           </div>
 
           <div className="year-label">{new Date().getFullYear()} · monthly totals</div>
@@ -322,7 +355,7 @@ export default function ManagerPage() {
             </div>
           ))}
 
-          {message && <div className="helper-note" style={{ color: message.includes('updated') ? 'var(--black)' : 'var(--red)' }}>{message}</div>}
+          {message && <div className="helper-note" style={{ color: /updated|deleted/i.test(message) ? 'var(--black)' : 'var(--red)' }}>{message}</div>}
         </section>
       )}
 
