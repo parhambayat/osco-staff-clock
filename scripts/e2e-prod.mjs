@@ -84,6 +84,14 @@ function assert(cond, msg) {
   results.push(['bad-code', r.status, r.ms, r.json.success]);
   assert(!r.json.success, 'bad code should fail');
 
+  // 11 cleanup test staff so production only keeps real users
+  r = await req(`/api/manager/staff?id=${encodeURIComponent(staffId)}`, {
+    method: 'DELETE',
+    headers: { Cookie: cookieHeader },
+  });
+  results.push(['cleanup', r.status, r.ms, r.json.success]);
+  assert(r.json.success, `cleanup failed: ${JSON.stringify(r.json)}`);
+
   console.log(JSON.stringify({ ok: true, phone, staffId, results }, null, 2));
 })().catch((e) => {
   console.error(JSON.stringify({ ok: false, error: e.message }));

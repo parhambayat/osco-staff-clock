@@ -1,6 +1,38 @@
 import { NextResponse } from 'next/server';
-import { listStaff, listPending, hasDatabase, isLocalDevMode } from '../../../../lib/db';
+import {
+  listStaff,
+  listPending,
+  deleteStaff,
+  hasDatabase,
+  isLocalDevMode,
+} from '../../../../lib/db';
 import { requireManager } from '../../../../lib/auth';
+
+function dbNotConfigured() {
+  return NextResponse.json(
+    {
+      success: false,
+      message:
+        'Database is not configured. Add SUPABASE_URL and SUPABASE_SERVICE_KEY in Vercel.',
+    },
+    { status: 503 }
+  );
+}
+
+/** Leftover accounts from scripts/e2e-prod.mjs (name like "QA 2031"). */
+function isQaTestStaff(staff) {
+  return /^QA \d+$/i.test(String(staff?.name || '').trim());
+}
+
+async function removeQaTestStaff(staffList) {
+  const qa = (staffList || []).filter(isQaTestStaff);
+  const removed = [];
+  for (const s of qa) {
+    const result = await deleteStaff(s.id);
+    if (!result.error) removed.push({ id: s.id, name: s.name, phone: s.phone });
+  }
+  return removed;
+}
 
 export async function GET() {
   try {
@@ -9,16 +41,9 @@ export async function GET() {
       return NextResponse.json({ success: false, message: 'Unauthorized' }, { status: 401 });
     }
 
-    if (!hasDatabase() && !isLocalDevMode()) {
-      return NextResponse.json(
-        {
-          success: false,
-          message:
-            'Database is not configured. Add SUPABASE_URL and SUPABASE_SERVICE_KEY in Vercel.',
-        },
-        { status: 503 }
-      );
-    }
+    if (!hasDatabase() && !isLocalDevMode()) return dbNotConfigured();
+
+    await removeQaTestStaff(await listStaff());
 
     return NextResponse.json({
       success: true,
@@ -27,6 +52,34 @@ export async function GET() {
     });
   } catch (e) {
     console.error('[manager/staff]', e);
+    return NextResponse.json({ success: false, message: e.message }, { status: 500 });
+  }
+}
+
+export async function DELETE(request) {
+  try {
+    const auth = requireManager();
+    if (!auth.ok) {
+      return NextResponse.json({ success: false, message: 'Unauthorized' }, { status: 401 });
+    }
+
+    if (!hasDatabase() && !isLocalDevMode()) return dbNotConfigured();
+
+    const { searchParams } = new URL(request.url);
+    const id = (searchParams.get('id') || '').trim();
+    if (!id) {
+      return NextResponse.json({ success: false, message: 'id required' }, { status: 400 });
+    }
+
+    const result = await deleteStaff(id);
+    if (result.error) {
+      const status = result.error === 'Staff not found.' ? 404 : 400;
+      return NextResponse.json({ success: false, message: result.error }, { status });
+    }
+
+    return NextResponse.json({ success: true });
+  } catch (e) {
+    console.error('[manager/staff DELETE]', e);
     return NextResponse.json({ success: false, message: e.message }, { status: 500 });
   }
 }

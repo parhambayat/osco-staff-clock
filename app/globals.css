@@ -179,7 +179,13 @@ body {
 }
 .staff-row.active { color: var(--red-dark); }
 .muted { color: var(--gray); font-size: 12px; font-weight: 400; }
-.mgr-staff-head { margin-bottom: 18px; }
+.mgr-staff-head {
+  margin-bottom: 18px;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+}
 .day-block { margin: 14px 0 18px; }
 .day-head {
   display: flex;
