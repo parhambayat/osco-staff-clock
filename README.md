@@ -26,11 +26,17 @@
 ### ورود/خروج فقط روی Wi‑Fi کافه (مودم Omantel)
 پرسنل باید از **لینک آنلاین** (`https://osco-staff-clock.vercel.app`) استفاده کنند، نه IP لوکال کامپیوتر.
 
-در **Vercel → Settings → Environment Variables** این‌ها را بگذار:
-- `LOCAL_DEV` = `false`
-- `CAFE_WIFI_IP` = `37.40.226.51` (IP عمومی مودم BROVI کافه)
+IP عمومی مودم Omantel **دینامیک** است و ممکن است عوض شود. اگر روی وای‌فای کافه باز هم پیام *Not connected to Osco Lounge Wi-Fi* آمد:
 
-بعد از ذخیره، یک **Redeploy** بزن. از وای‌فای دیگر یا اینترنت خط باید پیام *Not connected to Osco Lounge Wi-Fi* بیاید.
+1. با گوشی روی **همان Wi‑Fi کافه** برو به `/manager`
+2. بخش **Café Wi-Fi IP** را باز کن
+3. دکمه **Use my current IP** را بزن (بدون redeploy)
+
+یک‌بار در Supabase → SQL Editor فایل `supabase-app-settings.sql` را Run کن تا ذخیره IP در دیتابیس کار کند.
+
+پیش‌فرض‌های build (تا وقتی از پنل ذخیره نکرده‌ای):
+- `CAFE_WIFI_IP` = `37.40.226.51,37.40.228.63` (چند IP با کاما مجاز است)
+- `LOCAL_DEV` = `false`
 
 برای تست روی همین PC کافه `LOCAL_DEV=true` بگذار (چک IP خاموش می‌شود).
 

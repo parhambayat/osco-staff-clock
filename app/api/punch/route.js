@@ -1,14 +1,23 @@
 import { NextResponse } from 'next/server';
-import { getStaffById, getOpenShift, clockIn, clockOut } from '../../../lib/db';
+import { getStaffById, getOpenShift, clockIn, clockOut, getCafeWifiIpsSetting } from '../../../lib/db';
 import {
   getClientIp,
+  getAllowedCafeIpsFromEnv,
+  parseIpList,
   shouldRejectPunch,
   wifiRejectResponse,
 } from '../../../lib/wifi';
 
+async function resolveAllowedIps() {
+  const setting = await getCafeWifiIpsSetting();
+  if (setting.ips) return parseIpList(setting.ips);
+  return getAllowedCafeIpsFromEnv();
+}
+
 export async function POST(req) {
   try {
     const ip = getClientIp(req);
+    const allowed = await resolveAllowedIps();
 
     let body;
     try {
@@ -25,8 +34,8 @@ export async function POST(req) {
       );
     }
 
-    if (shouldRejectPunch(ip)) {
-      const reject = wifiRejectResponse(ip);
+    if (shouldRejectPunch(ip, allowed)) {
+      const reject = wifiRejectResponse(ip, allowed);
       return NextResponse.json(reject.body, { status: reject.status });
     }
 
