@@ -45,9 +45,18 @@ withEnv({ LOCAL_DEV: 'true' }, () => {
 });
 
 withEnv({ LOCAL_DEV: 'false', CAFE_WIFI_IP: '' }, () => {
-  assert.deepStrictEqual(getAllowedCafeIpsFromEnv(), ['37.40.226.51', '37.40.228.63']);
+  assert.deepStrictEqual(getAllowedCafeIpsFromEnv(), [
+    '37.40.224.218',
+    '37.40.226.51',
+    '37.40.228.63',
+  ]);
   assert.strictEqual(shouldRejectPunch('1.2.3.4'), true);
+  assert.strictEqual(shouldRejectPunch('37.40.224.218'), false);
   assert.strictEqual(shouldRejectPunch('37.40.228.63'), false);
+});
+
+withEnv({ OSCO_ENFORCE_WIFI: 'true', CAFE_WIFI_IP: '' }, () => {
+  assert.strictEqual(shouldRejectPunch('37.40.224.218'), false);
 });
 
 // DB override list wins over env
