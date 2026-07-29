@@ -129,6 +129,26 @@ body {
   font-size: 14px;
   cursor: pointer;
 }
+.btn-ghost:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.btn-danger {
+  width: 100%;
+  padding: 12px;
+  margin-top: 8px;
+  border: 1px solid var(--red);
+  border-radius: 10px;
+  background: var(--white);
+  color: var(--red);
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.btn-danger:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
 .manager-link {
   display: inline-block;
   margin-top: 28px;
@@ -185,6 +205,23 @@ body {
   justify-content: space-between;
   align-items: flex-start;
   gap: 12px;
+}
+.mgr-staff-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+}
+.mgr-staff-actions .text-btn:disabled,
+.shift-row-actions .text-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.shift-row-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  flex-shrink: 0;
 }
 .day-block { margin: 14px 0 18px; }
 .day-head {
