@@ -36,3 +36,12 @@ create unique index if not exists shifts_one_open_per_staff
 alter table staff enable row level security;
 alter table pending enable row level security;
 alter table shifts enable row level security;
+
+-- Café Wi-Fi IP overrides (editable from Manager panel)
+create table if not exists app_settings (
+  key text primary key,
+  value text not null,
+  updated_at timestamptz default now()
+);
+
+alter table app_settings enable row level security;

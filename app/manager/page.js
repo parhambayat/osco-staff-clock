@@ -44,6 +44,8 @@ export default function ManagerPage() {
   const [selectedDate, setSelectedDate] = useState('');
   const [editShift, setEditShift] = useState(null);
   const [message, setMessage] = useState('');
+  const [wifiInfo, setWifiInfo] = useState(null);
+  const [wifiBusy, setWifiBusy] = useState(false);
   const pendingCountRef = useRef(0);
 
   useEffect(() => {
@@ -59,6 +61,7 @@ export default function ManagerPage() {
   useEffect(() => {
     if (!authed) return;
     loadStaff();
+    loadWifi();
     const t = setInterval(loadStaff, 10000);
     return () => clearInterval(t);
   }, [authed]);
@@ -93,6 +96,39 @@ export default function ManagerPage() {
     setStaffList([]);
     setSelectedId(null);
     setDetail(null);
+  }
+
+  async function loadWifi() {
+    try {
+      const res = await fetch('/api/manager/wifi');
+      const data = await res.json();
+      if (data.success) setWifiInfo(data);
+      else if (res.status === 401) setAuthed(false);
+    } catch {
+      // ignore
+    }
+  }
+
+  async function useCurrentWifiIp() {
+    setWifiBusy(true);
+    setMessage('');
+    try {
+      const res = await fetch('/api/manager/wifi', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ useCurrentIp: true }),
+      });
+      const data = await res.json();
+      if (!data.success) {
+        setMessage(data.message || 'Could not update Wi-Fi IP.');
+      } else {
+        setWifiInfo(data);
+        setMessage('Café Wi-Fi IP updated. Staff can punch on this network now.');
+      }
+    } catch {
+      setMessage('Network error');
+    }
+    setWifiBusy(false);
   }
 
   async function loadStaff() {
@@ -238,6 +274,53 @@ export default function ManagerPage() {
         <div className="brand">Manager</div>
         <button type="button" className="text-btn" onClick={logout}>Logout</button>
       </div>
+
+      <section className="mgr-section">
+        <div className="mini-log-title">Café Wi-Fi IP</div>
+        <p className="mgr-hint">
+          Omantel may change the café public IP. Open this panel <strong>on Osco Lounge Wi-Fi</strong>
+          and tap the button if staff see “Not connected to Osco Lounge Wi-Fi.”
+        </p>
+        {wifiInfo ? (
+          <div className="wifi-box">
+            <div className="wifi-row">
+              <span className="muted">Your public IP</span>
+              <span className="mono">{wifiInfo.clientIp}</span>
+            </div>
+            <div className="wifi-row">
+              <span className="muted">Allowed</span>
+              <span className="mono">{(wifiInfo.allowedIps || []).join(', ') || '—'}</span>
+            </div>
+            <div className={`wifi-status ${wifiInfo.match ? 'ok' : 'bad'}`}>
+              {wifiInfo.match ? 'Match — punches allowed from this phone' : 'No match — punches blocked from this phone'}
+            </div>
+            {!wifiInfo.match && (
+              <button type="button" disabled={wifiBusy} onClick={useCurrentWifiIp}>
+                {wifiBusy ? 'Saving…' : 'Use my current IP'}
+              </button>
+            )}
+            {wifiInfo.setupError && (
+              <p className="mgr-hint" style={{ color: 'var(--red)', marginTop: 10 }}>
+                Database note: run <code>supabase-app-settings.sql</code> once in Supabase, then try again.
+              </p>
+            )}
+            {message && /Wi-Fi|wifi|IP updated|Could not update/i.test(message) && (
+              <div
+                className="helper-note"
+                style={{
+                  marginTop: 12,
+                  marginBottom: 0,
+                  color: /updated/i.test(message) ? 'var(--black)' : 'var(--red)',
+                }}
+              >
+                {message}
+              </div>
+            )}
+          </div>
+        ) : (
+          <div className="empty-note">Loading Wi-Fi status…</div>
+        )}
+      </section>
 
       <section className="mgr-section">
         <div className="mini-log-title">Registration codes</div>
