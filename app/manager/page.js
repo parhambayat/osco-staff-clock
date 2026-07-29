@@ -299,11 +299,6 @@ export default function ManagerPage() {
                 {wifiBusy ? 'Saving…' : 'Use my current IP'}
               </button>
             )}
-            {wifiInfo.setupError && (
-              <p className="mgr-hint" style={{ color: 'var(--red)', marginTop: 10 }}>
-                Database note: run <code>supabase-app-settings.sql</code> once in Supabase, then try again.
-              </p>
-            )}
             {message && /Wi-Fi|wifi|IP updated|Could not update/i.test(message) && (
               <div
                 className="helper-note"

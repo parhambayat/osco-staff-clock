@@ -84,7 +84,7 @@ export async function POST(req) {
     success: true,
     clientIp,
     allowedIps: ips,
-    source: 'db',
+    source: result.source || 'db',
     match: ips.includes(clientIp),
   });
 }
