@@ -36,6 +36,7 @@ export default function ManagerPage() {
   const [password, setPassword] = useState('');
   const [loginError, setLoginError] = useState('');
   const [busy, setBusy] = useState(false);
+  const [busyLabel, setBusyLabel] = useState('');
 
   const [staffList, setStaffList] = useState([]);
   const [pending, setPending] = useState([]);
@@ -135,6 +136,7 @@ export default function ManagerPage() {
   async function saveEdit(e) {
     e.preventDefault();
     setBusy(true);
+    setBusyLabel('Saving…');
     setMessage('');
     try {
       const res = await fetch('/api/manager/shifts', {
@@ -160,23 +162,38 @@ export default function ManagerPage() {
       setMessage('Network error');
     }
     setBusy(false);
+    setBusyLabel('');
   }
 
   async function removeShift(id) {
     if (!confirm('Delete this shift?')) return;
-    const res = await fetch(`/api/manager/shifts?id=${encodeURIComponent(id)}`, { method: 'DELETE' });
-    const data = await res.json();
-    if (data.success) {
-      setEditShift(null);
-      await loadDetail(selectedId, selectedDate);
-    } else {
-      setMessage(data.message || 'Delete failed');
+    setBusy(true);
+    setBusyLabel('Deleting…');
+    setMessage('');
+    try {
+      const res = await fetch(`/api/manager/shifts?id=${encodeURIComponent(id)}`, {
+        method: 'DELETE',
+      });
+      const data = await res.json();
+      if (data.success) {
+        setEditShift(null);
+        setMessage('Shift deleted.');
+        await loadDetail(selectedId, selectedDate);
+        await loadStaff();
+      } else {
+        setMessage(data.message || 'Delete failed');
+      }
+    } catch {
+      setMessage('Network error');
     }
+    setBusy(false);
+    setBusyLabel('');
   }
 
   async function removeStaff(staffId, staffName) {
     if (!confirm(`Delete staff “${staffName}”? Their shifts will be removed too.`)) return;
     setBusy(true);
+    setBusyLabel('Deleting…');
     setMessage('');
     try {
       const res = await fetch(`/api/manager/staff?id=${encodeURIComponent(staffId)}`, {
@@ -197,6 +214,32 @@ export default function ManagerPage() {
       setMessage('Network error');
     }
     setBusy(false);
+    setBusyLabel('');
+  }
+
+  async function clearShifts(staffId, staffName) {
+    if (!confirm(`Clear all shifts for “${staffName}”? The person stays registered.`)) return;
+    setBusy(true);
+    setBusyLabel('Clearing…');
+    setMessage('');
+    try {
+      const res = await fetch(
+        `/api/manager/staff?id=${encodeURIComponent(staffId)}&clearShifts=1`,
+        { method: 'DELETE' }
+      );
+      const data = await res.json();
+      if (!data.success) {
+        setMessage(data.message || 'Clear failed');
+      } else {
+        setMessage('Shifts cleared.');
+        await loadDetail(staffId, selectedDate);
+        await loadStaff();
+      }
+    } catch {
+      setMessage('Network error');
+    }
+    setBusy(false);
+    setBusyLabel('');
   }
 
   if (!authChecked) return null;
@@ -291,14 +334,24 @@ export default function ManagerPage() {
               <div className="full-date">{detail.staff.name}</div>
               <div className="muted">{detail.staff.phone}</div>
             </div>
-            <button
-              type="button"
-              className="text-btn"
-              disabled={busy}
-              onClick={() => removeStaff(detail.staff.id, detail.staff.name)}
-            >
-              Delete staff
-            </button>
+            <div className="mgr-staff-actions">
+              <button
+                type="button"
+                className="text-btn"
+                disabled={busy}
+                onClick={() => clearShifts(detail.staff.id, detail.staff.name)}
+              >
+                Clear shifts
+              </button>
+              <button
+                type="button"
+                className="text-btn"
+                disabled={busy}
+                onClick={() => removeStaff(detail.staff.id, detail.staff.name)}
+              >
+                Delete staff
+              </button>
+            </div>
           </div>
 
           <div className="year-label">{new Date().getFullYear()} · monthly totals</div>
@@ -337,30 +390,50 @@ export default function ManagerPage() {
                       ? new Date(s.clock_out).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })
                       : 'open'}
                   </span>
-                  <button
-                    type="button"
-                    className="text-btn"
-                    onClick={() =>
-                      setEditShift({
-                        id: s.id,
-                        clock_in_local: toLocalInputValue(s.clock_in),
-                        clock_out_local: s.clock_out ? toLocalInputValue(s.clock_out) : '',
-                      })
-                    }
-                  >
-                    Edit
-                  </button>
+                  <span className="shift-row-actions">
+                    <button
+                      type="button"
+                      className="text-btn"
+                      disabled={busy}
+                      onClick={() =>
+                        setEditShift({
+                          id: s.id,
+                          clock_in_local: toLocalInputValue(s.clock_in),
+                          clock_out_local: s.clock_out ? toLocalInputValue(s.clock_out) : '',
+                        })
+                      }
+                    >
+                      Edit
+                    </button>
+                    <button
+                      type="button"
+                      className="text-btn"
+                      disabled={busy}
+                      onClick={() => removeShift(s.id)}
+                    >
+                      Delete
+                    </button>
+                  </span>
                 </div>
               ))}
             </div>
           ))}
+        </section>
+      )}
 
-          {message && <div className="helper-note" style={{ color: /updated|deleted/i.test(message) ? 'var(--black)' : 'var(--red)' }}>{message}</div>}
+      {message && (
+        <section className="mgr-section">
+          <div
+            className="helper-note"
+            style={{ color: /updated|deleted|cleared/i.test(message) ? 'var(--black)' : 'var(--red)' }}
+          >
+            {message}
+          </div>
         </section>
       )}
 
       {editShift && (
-        <div className="modal-backdrop" onClick={() => setEditShift(null)}>
+        <div className="modal-backdrop" onClick={() => !busy && setEditShift(null)}>
           <form className="modal" onClick={(e) => e.stopPropagation()} onSubmit={saveEdit}>
             <div className="brand" style={{ marginBottom: 12 }}>Edit shift</div>
             <label className="field-label">Clock in</label>
@@ -369,16 +442,30 @@ export default function ManagerPage() {
               value={editShift.clock_in_local}
               onChange={(e) => setEditShift({ ...editShift, clock_in_local: e.target.value })}
               required
+              disabled={busy}
             />
             <label className="field-label">Clock out (empty = still open)</label>
             <input
               type="datetime-local"
               value={editShift.clock_out_local}
               onChange={(e) => setEditShift({ ...editShift, clock_out_local: e.target.value })}
+              disabled={busy}
             />
-            <button type="submit" disabled={busy}>{busy ? 'Saving…' : 'Save changes'}</button>
-            <button type="button" className="btn-ghost" onClick={() => removeShift(editShift.id)}>Delete shift</button>
-            <button type="button" className="btn-ghost" onClick={() => setEditShift(null)}>Cancel</button>
+            {message && !/updated|deleted|cleared/i.test(message) && (
+              <div className="form-error">{message}</div>
+            )}
+            <button type="submit" disabled={busy}>{busyLabel === 'Saving…' ? 'Saving…' : 'Save changes'}</button>
+            <button
+              type="button"
+              className="btn-danger"
+              disabled={busy}
+              onClick={() => removeShift(editShift.id)}
+            >
+              {busyLabel === 'Deleting…' ? 'Deleting…' : 'Delete shift'}
+            </button>
+            <button type="button" className="btn-ghost" disabled={busy} onClick={() => setEditShift(null)}>
+              Cancel
+            </button>
           </form>
         </div>
       )}

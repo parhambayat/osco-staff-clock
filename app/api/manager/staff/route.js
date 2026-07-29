@@ -3,6 +3,7 @@ import {
   listStaff,
   listPending,
   deleteStaff,
+  clearStaffShifts,
   hasDatabase,
   isLocalDevMode,
 } from '../../../../lib/db';
@@ -71,13 +72,19 @@ export async function DELETE(request) {
       return NextResponse.json({ success: false, message: 'id required' }, { status: 400 });
     }
 
-    const result = await deleteStaff(id);
+    // ?clearShifts=1 keeps the person and only wipes their shift history
+    const clearOnly = searchParams.get('clearShifts') === '1';
+    const result = clearOnly ? await clearStaffShifts(id) : await deleteStaff(id);
     if (result.error) {
       const status = result.error === 'Staff not found.' ? 404 : 400;
       return NextResponse.json({ success: false, message: result.error }, { status });
     }
 
-    return NextResponse.json({ success: true });
+    return NextResponse.json({
+      success: true,
+      cleared: clearOnly,
+      removed: result.removed,
+    });
   } catch (e) {
     console.error('[manager/staff DELETE]', e);
     return NextResponse.json({ success: false, message: e.message }, { status: 500 });
