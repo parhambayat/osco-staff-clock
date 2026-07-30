@@ -23,19 +23,19 @@ function withEnv(patch, fn) {
 }
 
 withEnv({ CAFE_WIFI_IP: '37.40.226.51', LOCAL_DEV: 'false', SKIP_WIFI_CHECK: '' }, () => {
-  assert.strictEqual(getAllowedCafeIp(), '37.40.224.218');
+  assert.strictEqual(getAllowedCafeIp(), '37.40.228.35');
   assert.ok(getAllowedCafeIpsFromEnv().includes('37.40.226.51'));
-  assert.ok(getAllowedCafeIpsFromEnv().includes('37.40.224.218'));
+  assert.ok(getAllowedCafeIpsFromEnv().includes('37.40.228.35'));
   assert.strictEqual(shouldRejectPunch('1.2.3.4'), true);
   assert.strictEqual(shouldRejectPunch('37.40.226.51'), false);
-  assert.strictEqual(shouldRejectPunch('37.40.224.218'), false);
+  assert.strictEqual(shouldRejectPunch('37.40.228.35'), false);
 });
 
 withEnv({ CAFE_WIFI_IP: '37.40.225.101', LOCAL_DEV: 'false' }, () => {
   // Stale Vercel dashboard IP must not wipe the current café IP defaults.
   assert.ok(getAllowedCafeIpsFromEnv().includes('37.40.225.101'));
-  assert.ok(getAllowedCafeIpsFromEnv().includes('37.40.224.218'));
-  assert.strictEqual(shouldRejectPunch('37.40.224.218'), false);
+  assert.ok(getAllowedCafeIpsFromEnv().includes('37.40.228.35'));
+  assert.strictEqual(shouldRejectPunch('37.40.228.35'), false);
   assert.strictEqual(shouldRejectPunch('1.2.3.4'), true);
 });
 
@@ -52,12 +52,12 @@ withEnv({ LOCAL_DEV: 'true' }, () => {
 withEnv({ LOCAL_DEV: 'false', CAFE_WIFI_IP: '' }, () => {
   assert.deepStrictEqual(getAllowedCafeIpsFromEnv(), [...DEFAULT_CAFE_WIFI_IPS]);
   assert.strictEqual(shouldRejectPunch('1.2.3.4'), true);
-  assert.strictEqual(shouldRejectPunch('37.40.224.218'), false);
+  assert.strictEqual(shouldRejectPunch('37.40.228.35'), false);
   assert.strictEqual(shouldRejectPunch('37.40.228.63'), false);
 });
 
 withEnv({ OSCO_ENFORCE_WIFI: 'true', CAFE_WIFI_IP: '' }, () => {
-  assert.strictEqual(shouldRejectPunch('37.40.224.218'), false);
+  assert.strictEqual(shouldRejectPunch('37.40.228.35'), false);
 });
 
 // DB override list wins over env
