@@ -6,9 +6,8 @@
     "dev": "next dev -H 0.0.0.0 -p 3000",
     "build": "next build",
     "start": "next start -H 0.0.0.0 -p 3000",
-    "test:wifi": "node scripts/test-wifi-check.mjs",
     "test:geofence": "node scripts/test-geofence.mjs",
-    "test": "npm run test:wifi && npm run test:geofence",
+    "test": "npm run test:geofence",
     "cleanup:qa": "node scripts/cleanup-qa-staff.mjs"
   },
   "dependencies": {

@@ -49,19 +49,27 @@ function assert(cond, msg) {
   assert(r.json.success && r.json.staff?.id, 'verify failed');
   const staffId = r.json.staff.id;
 
-  // 5 punch — from outside café Wi-Fi must be blocked when CAFE_WIFI_IP is set on Vercel
+  // 5 punch without GPS must be blocked by café geofence
   r = await req('/api/punch', { method: 'POST', body: JSON.stringify({ staffId }) });
-  const wifiBlocked =
-    r.status === 403 && /Wi-?Fi/i.test(r.json.message || '');
-  results.push(['punch-wifi', r.status, r.ms, wifiBlocked ? 'blocked' : r.json.action]);
-  assert(wifiBlocked || (r.json.success && r.json.action === 'in'), `punch unexpected: ${JSON.stringify(r.json)}`);
+  const geoBlocked =
+    r.status === 403 && /location|Osco Lounge|GPS|permission/i.test(r.json.message || '');
+  results.push(['punch-geo', r.status, r.ms, geoBlocked ? 'blocked' : r.json.action]);
+  assert(geoBlocked || (r.json.success && r.json.action === 'in'), `punch unexpected: ${JSON.stringify(r.json)}`);
 
-  if (!wifiBlocked) {
-    // 6 double punch (wifi check not active in this environment)
+  if (!geoBlocked) {
+    // 6 double punch (geo check not active in this environment)
     r = await req('/api/punch', { method: 'POST', body: JSON.stringify({ staffId }) });
     results.push(['punch-out', r.status, r.ms, r.json.success, r.json.action]);
     assert(r.json.success && r.json.action === 'out', `punch out failed: ${JSON.stringify(r.json)}`);
   }
+
+  // Far-away spoofed coords must also be blocked when café location is configured
+  r = await req('/api/punch', {
+    method: 'POST',
+    body: JSON.stringify({ staffId, lat: 0, lng: 0, accuracy: 10 }),
+  });
+  results.push(['punch-far', r.status, r.ms, r.json.success === false]);
+  assert(r.status === 403 && !r.json.success, `far punch should fail: ${JSON.stringify(r.json)}`);
 
   // 7 summary
   r = await req(`/api/summary?staffId=${encodeURIComponent(staffId)}&year=2026`);

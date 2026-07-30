@@ -89,24 +89,36 @@ export default function Home() {
     setBusy(true);
     setMessage('');
     try {
-      let coords = {};
-      if (navigator.geolocation) {
-        try {
-          coords = await new Promise((resolve, reject) => {
-            navigator.geolocation.getCurrentPosition(
-              (pos) =>
-                resolve({
-                  lat: pos.coords.latitude,
-                  lng: pos.coords.longitude,
-                }),
-              (err) => reject(err),
-              { enableHighAccuracy: true, timeout: 20000, maximumAge: 15000 }
-            );
-          });
-        } catch {
-          // If café location mode is on, server will reject with a clear message.
-          coords = {};
+      if (!navigator.geolocation) {
+        setMessage('This phone does not support location. Use a phone with GPS.');
+        setBusy(false);
+        return;
+      }
+
+      let coords;
+      try {
+        coords = await new Promise((resolve, reject) => {
+          navigator.geolocation.getCurrentPosition(
+            (pos) =>
+              resolve({
+                lat: pos.coords.latitude,
+                lng: pos.coords.longitude,
+                accuracy: pos.coords.accuracy,
+              }),
+            (err) => reject(err),
+            { enableHighAccuracy: true, timeout: 20000, maximumAge: 0 }
+          );
+        });
+      } catch (err) {
+        if (err?.code === 1) {
+          setMessage('Allow location access for this site, then try again.');
+        } else if (err?.code === 3) {
+          setMessage('Location timed out. Step near a window and try again.');
+        } else {
+          setMessage('Could not read GPS. Try again near a window.');
         }
+        setBusy(false);
+        return;
       }
 
       const res = await fetch('/api/punch', {
