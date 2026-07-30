@@ -226,6 +226,33 @@ body {
   cursor: pointer;
 }
 .cafe-box button:disabled { opacity: 0.55; cursor: not-allowed; }
+.bypass-form { margin-top: 18px; }
+.bypass-form input {
+  width: 100%;
+  padding: 14px 16px;
+  border-radius: 10px;
+  border: 1px solid var(--gray-light);
+  font-size: 15px;
+  margin-bottom: 10px;
+}
+.bypass-form button[type="submit"] {
+  width: 100%;
+  padding: 14px 16px;
+  border: none;
+  border-radius: 10px;
+  background: var(--red);
+  color: var(--white);
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  margin-bottom: 8px;
+}
+.bypass-form button[type="submit"]:disabled { opacity: 0.55; }
+.footnote .text-btn {
+  font-size: 11px;
+  color: var(--gray);
+  margin-top: 6px;
+}
 .day-block { margin: 14px 0 18px; }
 .day-head {
   display: flex;

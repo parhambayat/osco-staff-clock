@@ -5,6 +5,7 @@ import {
   clockIn,
   clockOut,
   getCafeLocationSetting,
+  isValidLocationBypass,
 } from '../../../lib/db';
 import { checkCafeGeofence, parseCafeLocation, shouldSkipGeofence } from '../../../lib/geofence';
 
@@ -26,27 +27,41 @@ export async function POST(req) {
     }
 
     if (!shouldSkipGeofence()) {
-      const locationSetting = await getCafeLocationSetting();
-      const cafeLocation = parseCafeLocation(locationSetting.raw);
-      if (!cafeLocation) {
-        return NextResponse.json(
-          {
-            success: false,
-            message:
-              'Café location is not set yet. Ask the manager to open Manager → Set café location here while at Osco Lounge.',
-          },
-          { status: 403 }
-        );
-      }
+      const bypassOk = await isValidLocationBypass({
+        staffId,
+        token: body.bypassToken,
+      });
 
-      const geo = checkCafeGeofence(cafeLocation, body.lat, body.lng, body.accuracy);
-      if (!geo.ok) {
-        console.warn('[punch geofence]', {
-          reason: geo.reason,
-          distanceM: geo.distanceM,
-          accuracyM: geo.accuracyM,
-        });
-        return NextResponse.json({ success: false, message: geo.reason }, { status: 403 });
+      if (!bypassOk) {
+        const locationSetting = await getCafeLocationSetting();
+        const cafeLocation = parseCafeLocation(locationSetting.raw);
+        if (!cafeLocation) {
+          return NextResponse.json(
+            {
+              success: false,
+              message:
+                'Café location is not set yet. Ask the manager to open Manager → Set café location here while at Osco Lounge.',
+            },
+            { status: 403 }
+          );
+        }
+
+        const geo = checkCafeGeofence(cafeLocation, body.lat, body.lng, body.accuracy);
+        if (!geo.ok) {
+          console.warn('[punch geofence]', {
+            reason: geo.reason,
+            distanceM: geo.distanceM,
+            accuracyM: geo.accuracyM,
+          });
+          return NextResponse.json(
+            {
+              success: false,
+              message: geo.reason,
+              needBypass: /permission|GPS|inaccurate|timed? ?out/i.test(geo.reason || ''),
+            },
+            { status: 403 }
+          );
+        }
       }
     }
 

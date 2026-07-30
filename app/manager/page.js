@@ -46,6 +46,8 @@ export default function ManagerPage() {
   const [message, setMessage] = useState('');
   const [locationInfo, setLocationInfo] = useState(null);
   const [locationBusy, setLocationBusy] = useState(false);
+  const [bypasses, setBypasses] = useState([]);
+  const [issuedCode, setIssuedCode] = useState(null);
   const pendingCountRef = useRef(0);
 
   useEffect(() => {
@@ -62,6 +64,7 @@ export default function ManagerPage() {
     if (!authed) return;
     loadStaff();
     loadLocation();
+    loadBypasses();
     const t = setInterval(loadStaff, 10000);
     return () => clearInterval(t);
   }, [authed]);
@@ -157,6 +160,53 @@ export default function ManagerPage() {
       setMessage(e.message || 'Could not read GPS. Allow location access and try again.');
     }
     setLocationBusy(false);
+  }
+
+  async function loadBypasses() {
+    try {
+      const res = await fetch('/api/manager/bypass');
+      const data = await res.json();
+      if (data.success) setBypasses(data.devices || []);
+      else if (res.status === 401) setAuthed(false);
+    } catch {
+      // ignore
+    }
+  }
+
+  async function issueBypass() {
+    if (!selectedId || busy) return;
+    setBusy(true);
+    setMessage('');
+    setIssuedCode(null);
+    try {
+      const res = await fetch('/api/manager/bypass', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ staffId: selectedId, label: 'Broken GPS phone' }),
+      });
+      const data = await res.json();
+      if (!data.success) {
+        setMessage(data.message || 'Could not create device pass.');
+      } else {
+        setIssuedCode(data.redeemCode);
+        setMessage(data.message || 'Device pass created.');
+        await loadBypasses();
+      }
+    } catch {
+      setMessage('Network error');
+    }
+    setBusy(false);
+  }
+
+  async function revokeBypass(id) {
+    if (!confirm('Revoke this device pass?')) return;
+    const res = await fetch(`/api/manager/bypass?id=${encodeURIComponent(id)}`, { method: 'DELETE' });
+    const data = await res.json();
+    if (!data.success) setMessage(data.message || 'Could not revoke.');
+    else {
+      if (issuedCode) setIssuedCode(null);
+      await loadBypasses();
+    }
   }
 
   async function loadStaff() {
@@ -405,6 +455,29 @@ export default function ManagerPage() {
             >
               Delete staff
             </button>
+          </div>
+
+          <div className="cafe-box" style={{ marginBottom: 18 }}>
+            <div className="mini-log-title" style={{ marginBottom: 8 }}>Broken GPS phone?</div>
+            <p className="mgr-hint">
+              Create a one-time code for this staff. Enter it on the broken phone once — that device can punch without location.
+            </p>
+            <button type="button" disabled={busy} onClick={issueBypass}>
+              {busy ? '…' : 'Create device pass code'}
+            </button>
+            {issuedCode && (
+              <div className="pending-code" style={{ marginTop: 12, textAlign: 'center' }}>{issuedCode}</div>
+            )}
+            {bypasses.filter((b) => b.staffId === detail.staff.id).map((b) => (
+              <div className="cafe-row" key={b.id} style={{ marginTop: 10 }}>
+                <span className="muted">
+                  {b.redeemedAt ? 'Active on a phone' : `Code ${b.pendingCode} (unused)`}
+                </span>
+                <button type="button" className="text-btn" onClick={() => revokeBypass(b.id)}>
+                  Revoke
+                </button>
+              </div>
+            ))}
           </div>
 
           <div className="year-label">{new Date().getFullYear()} · monthly totals</div>
