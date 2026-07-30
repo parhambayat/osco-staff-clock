@@ -31,6 +31,7 @@ function saveStaff(staff) {
 function clearStaff() {
   localStorage.removeItem(STAFF_KEY);
   localStorage.removeItem('osco_staff_name');
+  fetch('/api/staff/me', { method: 'DELETE' }).catch(() => {});
 }
 
 function loadBypass(staffId) {
@@ -70,10 +71,53 @@ export default function Home() {
   const [bypassBusy, setBypassBusy] = useState(false);
 
   useEffect(() => {
-    const s = loadStaff();
-    setStaff(s);
-    if (s?.id) setHasBypass(!!loadBypass(s.id));
-    setReady(true);
+    let cancelled = false;
+    async function boot() {
+      const local = loadStaff();
+      if (local?.id) {
+        if (!cancelled) {
+          setStaff(local);
+          setHasBypass(!!loadBypass(local.id));
+          setReady(true);
+        }
+        // Refresh cookie/local from server in background
+        try {
+          const res = await fetch('/api/staff/me');
+          const data = await res.json();
+          if (cancelled) return;
+          if (data.authenticated && data.staff) {
+            saveStaff(data.staff);
+            setStaff(data.staff);
+          } else if (data.needReregister) {
+            clearStaff();
+            clearBypass();
+            setStaff(null);
+            setHasBypass(false);
+          }
+        } catch {
+          // keep local
+        }
+        return;
+      }
+
+      try {
+        const res = await fetch('/api/staff/me');
+        const data = await res.json();
+        if (cancelled) return;
+        if (data.authenticated && data.staff) {
+          saveStaff(data.staff);
+          setStaff(data.staff);
+          setHasBypass(!!loadBypass(data.staff.id));
+        }
+      } catch {
+        // show register
+      }
+      if (!cancelled) setReady(true);
+    }
+    boot();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
@@ -295,7 +339,7 @@ export default function Home() {
 }
 
 function RegisterFlow({ onRegistered }) {
-  const [mode, setMode] = useState('register'); // register | restore
+  const [mode, setMode] = useState('restore'); // restore | register — most scans are returning staff
   const [step, setStep] = useState('form'); // form | code
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
@@ -319,12 +363,28 @@ function RegisterFlow({ onRegistered }) {
     setError('');
     setInfo('');
     try {
-      const endpoint = mode === 'restore' ? '/api/register/restore' : '/api/register/request';
-      const body = mode === 'restore' ? { phone } : { name, phone };
-      const res = await fetch(endpoint, {
+      if (mode === 'restore') {
+        const res = await fetch('/api/register/restore', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ phone }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!data.success) {
+          setError(data.message || `Could not continue (${res.status}).`);
+        } else if (data.staff) {
+          onRegistered(data.staff);
+        } else {
+          setError('Could not open account.');
+        }
+        setBusy(false);
+        return;
+      }
+
+      const res = await fetch('/api/register/request', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
+        body: JSON.stringify({ name, phone }),
       });
       const data = await res.json().catch(() => ({}));
       if (!data.success) {
@@ -350,8 +410,7 @@ function RegisterFlow({ onRegistered }) {
     setBusy(true);
     setError('');
     try {
-      const endpoint = mode === 'restore' ? '/api/register/restore-verify' : '/api/register/verify';
-      const res = await fetch(endpoint, {
+      const res = await fetch('/api/register/verify', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ phone: savedPhone, code }),
@@ -372,7 +431,7 @@ function RegisterFlow({ onRegistered }) {
     step === 'code'
       ? 'Ask the manager for the code from their panel, then enter it here.'
       : mode === 'restore'
-        ? 'Enter the phone you registered with. The manager will get a code to open your account on this phone.'
+        ? 'Already registered? Enter your phone number to open clock-in. No manager code needed.'
         : 'New here? Register once with your name and phone. The manager will get a code in their panel.';
 
   return (
@@ -385,17 +444,17 @@ function RegisterFlow({ onRegistered }) {
           <div className="mode-tabs">
             <button
               type="button"
-              className={`mode-tab ${mode === 'register' ? 'active' : ''}`}
-              onClick={() => switchMode('register')}
-            >
-              New register
-            </button>
-            <button
-              type="button"
               className={`mode-tab ${mode === 'restore' ? 'active' : ''}`}
               onClick={() => switchMode('restore')}
             >
               Already registered
+            </button>
+            <button
+              type="button"
+              className={`mode-tab ${mode === 'register' ? 'active' : ''}`}
+              onClick={() => switchMode('register')}
+            >
+              New register
             </button>
           </div>
         )}
@@ -421,7 +480,7 @@ function RegisterFlow({ onRegistered }) {
             />
             {error && <div className="form-error">{error}</div>}
             <button type="submit" disabled={busy}>
-              {busy ? 'Sending…' : mode === 'restore' ? 'Send restore code' : 'Send code to manager'}
+              {busy ? '…' : mode === 'restore' ? 'Open clock-in' : 'Send code to manager'}
             </button>
           </form>
         ) : (
