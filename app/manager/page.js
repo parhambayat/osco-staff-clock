@@ -46,8 +46,7 @@ export default function ManagerPage() {
   const [message, setMessage] = useState('');
   const [locationInfo, setLocationInfo] = useState(null);
   const [locationBusy, setLocationBusy] = useState(false);
-  const [bypasses, setBypasses] = useState([]);
-  const [issuedCode, setIssuedCode] = useState(null);
+  const [exemptIds, setExemptIds] = useState([]);
   const pendingCountRef = useRef(0);
 
   useEffect(() => {
@@ -64,7 +63,7 @@ export default function ManagerPage() {
     if (!authed) return;
     loadStaff();
     loadLocation();
-    loadBypasses();
+    loadExempt();
     const t = setInterval(loadStaff, 10000);
     return () => clearInterval(t);
   }, [authed]);
@@ -162,51 +161,38 @@ export default function ManagerPage() {
     setLocationBusy(false);
   }
 
-  async function loadBypasses() {
+  async function loadExempt() {
     try {
-      const res = await fetch('/api/manager/bypass');
+      const res = await fetch('/api/manager/exempt');
       const data = await res.json();
-      if (data.success) setBypasses(data.devices || []);
+      if (data.success) setExemptIds(data.staffIds || []);
       else if (res.status === 401) setAuthed(false);
     } catch {
       // ignore
     }
   }
 
-  async function issueBypass() {
+  async function toggleExempt(enabled) {
     if (!selectedId || busy) return;
     setBusy(true);
     setMessage('');
-    setIssuedCode(null);
     try {
-      const res = await fetch('/api/manager/bypass', {
+      const res = await fetch('/api/manager/exempt', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ staffId: selectedId, label: 'Broken GPS phone' }),
+        body: JSON.stringify({ staffId: selectedId, enabled }),
       });
       const data = await res.json();
       if (!data.success) {
-        setMessage(data.message || 'Could not create device pass.');
+        setMessage(data.message || 'Could not update.');
       } else {
-        setIssuedCode(data.redeemCode);
-        setMessage(data.message || 'Device pass created.');
-        await loadBypasses();
+        setExemptIds(data.staffIds || []);
+        setMessage(data.message || 'Updated.');
       }
     } catch {
       setMessage('Network error');
     }
     setBusy(false);
-  }
-
-  async function revokeBypass(id) {
-    if (!confirm('Revoke this device pass?')) return;
-    const res = await fetch(`/api/manager/bypass?id=${encodeURIComponent(id)}`, { method: 'DELETE' });
-    const data = await res.json();
-    if (!data.success) setMessage(data.message || 'Could not revoke.');
-    else {
-      if (issuedCode) setIssuedCode(null);
-      await loadBypasses();
-    }
   }
 
   async function loadStaff() {
@@ -434,7 +420,10 @@ export default function ManagerPage() {
               onClick={() => { setSelectedId(s.id); setSelectedDate(''); setMessage(''); }}
             >
               <span>{s.name}</span>
-              <span className="muted">{s.phone}</span>
+              <span className="muted">
+                {exemptIds.includes(s.id) ? 'no GPS · ' : ''}
+                {s.phone}
+              </span>
             </button>
           ))
         )}
@@ -458,26 +447,38 @@ export default function ManagerPage() {
           </div>
 
           <div className="cafe-box" style={{ marginBottom: 18 }}>
-            <div className="mini-log-title" style={{ marginBottom: 8 }}>Broken GPS phone?</div>
+            <div className="mini-log-title" style={{ marginBottom: 8 }}>Location requirement</div>
             <p className="mgr-hint">
-              Create a one-time code for this staff. Enter it on the broken phone once — that device can punch without location.
+              Turn this on for staff whose phone GPS does not work. They can punch without location — no codes needed.
             </p>
-            <button type="button" disabled={busy} onClick={issueBypass}>
-              {busy ? '…' : 'Create device pass code'}
+            <div className={`cafe-status ${exemptIds.includes(detail.staff.id) ? 'ok' : 'bad'}`}>
+              {exemptIds.includes(detail.staff.id)
+                ? 'No location required for this staff'
+                : 'Must be at café (GPS required)'}
+            </div>
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => toggleExempt(!exemptIds.includes(detail.staff.id))}
+            >
+              {busy
+                ? '…'
+                : exemptIds.includes(detail.staff.id)
+                  ? 'Require location again'
+                  : 'Allow punch without location'}
             </button>
-            {issuedCode && (
-              <div className="pending-code" style={{ marginTop: 12, textAlign: 'center' }}>{issuedCode}</div>
-            )}
-            {bypasses.filter((b) => b.staffId === detail.staff.id).map((b) => (
-              <div className="cafe-row" key={b.id} style={{ marginTop: 10 }}>
-                <span className="muted">
-                  {b.redeemedAt ? 'Active on a phone' : `Code ${b.pendingCode} (unused)`}
-                </span>
-                <button type="button" className="text-btn" onClick={() => revokeBypass(b.id)}>
-                  Revoke
-                </button>
+            {message && /location|GPS|punch without|must use café/i.test(message) && (
+              <div
+                className="helper-note"
+                style={{
+                  marginTop: 12,
+                  marginBottom: 0,
+                  color: /without location|Updated|can punch/i.test(message) ? 'var(--black)' : 'var(--red)',
+                }}
+              >
+                {message}
               </div>
-            ))}
+            )}
           </div>
 
           <div className="year-label">{new Date().getFullYear()} · monthly totals</div>

@@ -148,17 +148,11 @@ export default function Home() {
     try {
       const bypass = loadBypass(staff.id);
       let payload = { staffId: staff.id };
+      if (bypass?.token) payload.bypassToken = bypass.token;
 
-      if (bypass?.token) {
-        payload.bypassToken = bypass.token;
-      } else {
-        if (!navigator.geolocation) {
-          setMessage('Location is unavailable on this phone. Ask the manager for a device pass code.');
-          setShowBypassForm(true);
-          setBusy(false);
-          return;
-        }
-
+      // Try GPS when available; if it fails, still call the server
+      // (manager may have permanently exempted this staff from location).
+      if (!bypass?.token && navigator.geolocation) {
         try {
           const coords = await new Promise((resolve, reject) => {
             navigator.geolocation.getCurrentPosition(
@@ -169,21 +163,12 @@ export default function Home() {
                   accuracy: pos.coords.accuracy,
                 }),
               (err) => reject(err),
-              { enableHighAccuracy: true, timeout: 20000, maximumAge: 0 }
+              { enableHighAccuracy: true, timeout: 12000, maximumAge: 0 }
             );
           });
           payload = { ...payload, ...coords };
-        } catch (err) {
-          if (err?.code === 1) {
-            setMessage('Allow location access, or ask the manager for a device pass code.');
-          } else if (err?.code === 3) {
-            setMessage('Location timed out. Try near a window, or ask for a device pass code.');
-          } else {
-            setMessage('Could not read GPS. Ask the manager for a device pass code.');
-          }
-          setShowBypassForm(true);
-          setBusy(false);
-          return;
+        } catch {
+          // continue without coords
         }
       }
 
