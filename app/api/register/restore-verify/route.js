@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import { verifyRestore } from '../../../../lib/db';
+import { applyStaffCookie } from '../../../../lib/session';
 
+/** Legacy endpoint — prefer POST /api/register/restore with phone only. */
 export async function POST(req) {
   try {
     let body;
@@ -23,14 +25,14 @@ export async function POST(req) {
       return NextResponse.json({ success: false, message: result.error }, { status });
     }
 
-    return NextResponse.json({
-      success: true,
-      staff: {
-        id: result.staff.id,
-        name: result.staff.name,
-        phone: result.staff.phone,
-      },
-    });
+    const staff = {
+      id: result.staff.id,
+      name: result.staff.name,
+      phone: result.staff.phone,
+    };
+    const res = NextResponse.json({ success: true, staff });
+    applyStaffCookie(res, staff);
+    return res;
   } catch (e) {
     console.error('[register/restore-verify]', e);
     return NextResponse.json(

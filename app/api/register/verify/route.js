@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { verifyPending } from '../../../../lib/db';
+import { applyStaffCookie } from '../../../../lib/session';
 
 export async function POST(req) {
   try {
@@ -23,14 +24,14 @@ export async function POST(req) {
       return NextResponse.json({ success: false, message: result.error }, { status });
     }
 
-    return NextResponse.json({
-      success: true,
-      staff: {
-        id: result.staff.id,
-        name: result.staff.name,
-        phone: result.staff.phone,
-      },
-    });
+    const staff = {
+      id: result.staff.id,
+      name: result.staff.name,
+      phone: result.staff.phone,
+    };
+    const res = NextResponse.json({ success: true, staff });
+    applyStaffCookie(res, staff);
+    return res;
   } catch (e) {
     console.error('[register/verify]', e);
     return NextResponse.json(
