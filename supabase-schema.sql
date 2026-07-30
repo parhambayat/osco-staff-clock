@@ -37,7 +37,7 @@ alter table staff enable row level security;
 alter table pending enable row level security;
 alter table shifts enable row level security;
 
--- Café Wi-Fi IP overrides (editable from Manager panel)
+-- Optional app settings (café location may also be stored via pending sentinel)
 create table if not exists app_settings (
   key text primary key,
   value text not null,

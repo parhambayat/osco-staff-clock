@@ -1,7 +1,3 @@
 {
-  "$schema": "https://openapi.vercel.sh/vercel.json",
-  "env": {
-    "CAFE_WIFI_IP": "37.40.228.35,37.40.228.65,37.40.224.218,37.40.225.101,37.40.226.51,37.40.228.63",
-    "LOCAL_DEV": "false"
-  }
+  "$schema": "https://openapi.vercel.sh/vercel.json"
 }

@@ -4,28 +4,12 @@ import {
   getOpenShift,
   clockIn,
   clockOut,
-  getCafeWifiIpsSetting,
   getCafeLocationSetting,
 } from '../../../lib/db';
-import {
-  getClientIp,
-  getAllowedCafeIpsFromEnv,
-  parseIpList,
-  shouldRejectPunch,
-  wifiRejectResponse,
-} from '../../../lib/wifi';
-import { checkCafeGeofence, parseCafeLocation } from '../../../lib/geofence';
-
-async function resolveAllowedIps() {
-  const setting = await getCafeWifiIpsSetting();
-  if (setting.ips) return parseIpList([...getAllowedCafeIpsFromEnv(), ...parseIpList(setting.ips)]);
-  return getAllowedCafeIpsFromEnv();
-}
+import { checkCafeGeofence, parseCafeLocation, shouldSkipGeofence } from '../../../lib/geofence';
 
 export async function POST(req) {
   try {
-    const ip = getClientIp(req);
-
     let body;
     try {
       body = await req.json();
@@ -41,28 +25,28 @@ export async function POST(req) {
       );
     }
 
-    const locationSetting = await getCafeLocationSetting();
-    const cafeLocation = parseCafeLocation(locationSetting.raw);
-
-    // Prefer stable café GPS geofence over Omantel's rotating public IP.
-    if (cafeLocation) {
-      const geo = checkCafeGeofence(cafeLocation, body.lat, body.lng);
-      if (!geo.ok) {
-        console.warn('[punch geofence]', { ip, reason: geo.reason, distanceM: geo.distanceM });
-        return NextResponse.json({ success: false, message: geo.reason }, { status: 403 });
-      }
-    } else {
-      const allowed = await resolveAllowedIps();
-      if (shouldRejectPunch(ip, allowed)) {
-        const reject = wifiRejectResponse(ip, allowed);
+    if (!shouldSkipGeofence()) {
+      const locationSetting = await getCafeLocationSetting();
+      const cafeLocation = parseCafeLocation(locationSetting.raw);
+      if (!cafeLocation) {
         return NextResponse.json(
           {
-            ...reject.body,
+            success: false,
             message:
-              'Not connected to Osco Lounge Wi-Fi. Ask the manager to set the café location in the Manager panel (recommended — stops IP changes from breaking punches).',
+              'Café location is not set yet. Ask the manager to open Manager → Set café location here while at Osco Lounge.',
           },
-          { status: reject.status }
+          { status: 403 }
         );
+      }
+
+      const geo = checkCafeGeofence(cafeLocation, body.lat, body.lng, body.accuracy);
+      if (!geo.ok) {
+        console.warn('[punch geofence]', {
+          reason: geo.reason,
+          distanceM: geo.distanceM,
+          accuracyM: geo.accuracyM,
+        });
+        return NextResponse.json({ success: false, message: geo.reason }, { status: 403 });
       }
     }
 

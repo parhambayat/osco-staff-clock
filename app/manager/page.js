@@ -44,8 +44,6 @@ export default function ManagerPage() {
   const [selectedDate, setSelectedDate] = useState('');
   const [editShift, setEditShift] = useState(null);
   const [message, setMessage] = useState('');
-  const [wifiInfo, setWifiInfo] = useState(null);
-  const [wifiBusy, setWifiBusy] = useState(false);
   const [locationInfo, setLocationInfo] = useState(null);
   const [locationBusy, setLocationBusy] = useState(false);
   const pendingCountRef = useRef(0);
@@ -63,7 +61,6 @@ export default function ManagerPage() {
   useEffect(() => {
     if (!authed) return;
     loadStaff();
-    loadWifi();
     loadLocation();
     const t = setInterval(loadStaff, 10000);
     return () => clearInterval(t);
@@ -119,8 +116,21 @@ export default function ManagerPage() {
         return;
       }
       navigator.geolocation.getCurrentPosition(
-        (pos) => resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
-        (err) => reject(new Error(err.message || 'Location permission denied.')),
+        (pos) =>
+          resolve({
+            lat: pos.coords.latitude,
+            lng: pos.coords.longitude,
+            accuracy: pos.coords.accuracy,
+          }),
+        (err) => {
+          if (err?.code === 1) {
+            reject(new Error('Location permission denied. Allow location for this site and try again.'));
+          } else if (err?.code === 3) {
+            reject(new Error('Location timed out. Step near a window and try again.'));
+          } else {
+            reject(new Error(err?.message || 'Could not read GPS location.'));
+          }
+        },
         { enableHighAccuracy: true, timeout: 20000, maximumAge: 0 }
       );
     });
@@ -147,39 +157,6 @@ export default function ManagerPage() {
       setMessage(e.message || 'Could not read GPS. Allow location access and try again.');
     }
     setLocationBusy(false);
-  }
-
-  async function loadWifi() {
-    try {
-      const res = await fetch('/api/manager/wifi');
-      const data = await res.json();
-      if (data.success) setWifiInfo(data);
-      else if (res.status === 401) setAuthed(false);
-    } catch {
-      // ignore
-    }
-  }
-
-  async function useCurrentWifiIp() {
-    setWifiBusy(true);
-    setMessage('');
-    try {
-      const res = await fetch('/api/manager/wifi', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ useCurrentIp: true }),
-      });
-      const data = await res.json();
-      if (!data.success) {
-        setMessage(data.message || 'Could not update Wi-Fi IP.');
-      } else {
-        setWifiInfo(data);
-        setMessage('Café Wi-Fi IP updated. Staff can punch on this network now.');
-      }
-    } catch {
-      setMessage('Network error');
-    }
-    setWifiBusy(false);
   }
 
   async function loadStaff() {
@@ -327,21 +304,20 @@ export default function ManagerPage() {
       </div>
 
       <section className="mgr-section">
-        <div className="mini-log-title">Café location (recommended)</div>
+        <div className="mini-log-title">Café location</div>
         <p className="mgr-hint">
-          Omantel changes the café public IP often — that is normal for 5G modems.
-          The number printed on the modem (<code>192.168.8.1</code>) is only a local address and cannot be used online.
-          Set the café GPS location once while you are at Osco Lounge; staff punches then work by being at the café, not by IP.
+          Staff can clock in/out only when they are at Osco Lounge.
+          Open this panel <strong>at the café</strong>, allow Location, then tap the button once.
         </p>
         {locationInfo ? (
-          <div className="wifi-box">
-            <div className={`wifi-status ${locationInfo.configured ? 'ok' : 'bad'}`}>
+          <div className="cafe-box">
+            <div className={`cafe-status ${locationInfo.configured ? 'ok' : 'bad'}`}>
               {locationInfo.configured
-                ? `Location set — punches use GPS (~${locationInfo.location?.radiusM || 250}m)`
-                : 'Not set yet — still using fragile Wi-Fi IP checks'}
+                ? `Location set — punches allowed within ~${locationInfo.location?.radiusM || 250}m`
+                : 'Not set — staff punches are blocked until you set it'}
             </div>
             {locationInfo.configured && locationInfo.location && (
-              <div className="wifi-row">
+              <div className="cafe-row">
                 <span className="muted">Saved point</span>
                 <span className="mono">
                   {locationInfo.location.lat.toFixed(5)}, {locationInfo.location.lng.toFixed(5)}
@@ -368,49 +344,6 @@ export default function ManagerPage() {
           <div className="empty-note">Loading location status…</div>
         )}
       </section>
-
-      {!locationInfo?.configured && (
-      <section className="mgr-section">
-        <div className="mini-log-title">Café Wi-Fi IP (temporary)</div>
-        <p className="mgr-hint">
-          Only needed until café location is set. Omantel may change this IP at any time.
-        </p>
-        {wifiInfo ? (
-          <div className="wifi-box">
-            <div className="wifi-row">
-              <span className="muted">Your public IP</span>
-              <span className="mono">{wifiInfo.clientIp}</span>
-            </div>
-            <div className="wifi-row">
-              <span className="muted">Allowed</span>
-              <span className="mono">{(wifiInfo.allowedIps || []).join(', ') || '—'}</span>
-            </div>
-            <div className={`wifi-status ${wifiInfo.match ? 'ok' : 'bad'}`}>
-              {wifiInfo.match ? 'Match — punches allowed from this phone' : 'No match — punches blocked from this phone'}
-            </div>
-            {!wifiInfo.match && (
-              <button type="button" disabled={wifiBusy} onClick={useCurrentWifiIp}>
-                {wifiBusy ? 'Saving…' : 'Use my current IP'}
-              </button>
-            )}
-            {message && /Wi-Fi|wifi|IP updated|Could not update/i.test(message) && (
-              <div
-                className="helper-note"
-                style={{
-                  marginTop: 12,
-                  marginBottom: 0,
-                  color: /updated/i.test(message) ? 'var(--black)' : 'var(--red)',
-                }}
-              >
-                {message}
-              </div>
-            )}
-          </div>
-        ) : (
-          <div className="empty-note">Loading Wi-Fi status…</div>
-        )}
-      </section>
-      )}
 
       <section className="mgr-section">
         <div className="mini-log-title">Registration codes</div>
