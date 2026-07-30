@@ -6,6 +6,7 @@ import {
   clockOut,
   getCafeLocationSetting,
   isValidLocationBypass,
+  isStaffLocationExempt,
 } from '../../../lib/db';
 import { checkCafeGeofence, parseCafeLocation, shouldSkipGeofence } from '../../../lib/geofence';
 
@@ -27,12 +28,15 @@ export async function POST(req) {
     }
 
     if (!shouldSkipGeofence()) {
-      const bypassOk = await isValidLocationBypass({
-        staffId,
-        token: body.bypassToken,
-      });
+      const staffExempt = await isStaffLocationExempt(staffId);
+      const bypassOk =
+        !staffExempt &&
+        (await isValidLocationBypass({
+          staffId,
+          token: body.bypassToken,
+        }));
 
-      if (!bypassOk) {
+      if (!staffExempt && !bypassOk) {
         const locationSetting = await getCafeLocationSetting();
         const cafeLocation = parseCafeLocation(locationSetting.raw);
         if (!cafeLocation) {
