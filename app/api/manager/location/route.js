@@ -5,7 +5,6 @@ import {
   checkCafeGeofence,
   parseCafeLocation,
   DEFAULT_CAFE_RADIUS_M,
-  MAX_ACCEPTABLE_ACCURACY_M,
 } from '../../../../lib/geofence';
 
 export async function GET() {
@@ -56,17 +55,12 @@ export async function POST(req) {
   if (lat < -90 || lat > 90 || lng < -180 || lng > 180) {
     return NextResponse.json({ success: false, message: 'Invalid GPS coordinates.' }, { status: 400 });
   }
-  if (Number.isFinite(accuracy) && accuracy > MAX_ACCEPTABLE_ACCURACY_M) {
-    return NextResponse.json(
-      {
-        success: false,
-        message: 'GPS is too inaccurate right now. Step outside or near a window and try again.',
-      },
-      { status: 400 }
-    );
-  }
 
-  const result = await setCafeLocationSetting({ lat, lng, radiusM });
+  const result = await setCafeLocationSetting({
+    lat,
+    lng,
+    radiusM: Number.isFinite(radiusM) && radiusM > 0 ? radiusM : DEFAULT_CAFE_RADIUS_M,
+  });
   if (result.error) {
     return NextResponse.json({ success: false, message: result.error }, { status: 500 });
   }

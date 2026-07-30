@@ -73,6 +73,31 @@ export default function Home() {
   useEffect(() => {
     let cancelled = false;
     async function boot() {
+      // Personal QR / deep link: /?t=TOKEN → direct clock-in for that staff
+      try {
+        const params = new URLSearchParams(window.location.search);
+        const linkToken = params.get('t');
+        if (linkToken) {
+          const res = await fetch('/api/staff/claim', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ token: linkToken }),
+          });
+          const data = await res.json().catch(() => ({}));
+          if (cancelled) return;
+          window.history.replaceState({}, '', '/');
+          if (data.success && data.staff) {
+            saveStaff(data.staff);
+            setStaff(data.staff);
+            setHasBypass(!!loadBypass(data.staff.id));
+            setReady(true);
+            return;
+          }
+        }
+      } catch {
+        // fall through to normal session restore
+      }
+
       const local = loadStaff();
       if (local?.id) {
         if (!cancelled) {
@@ -80,7 +105,6 @@ export default function Home() {
           setHasBypass(!!loadBypass(local.id));
           setReady(true);
         }
-        // Refresh cookie/local from server in background
         try {
           const res = await fetch('/api/staff/me');
           const data = await res.json();

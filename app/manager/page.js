@@ -47,6 +47,7 @@ export default function ManagerPage() {
   const [locationInfo, setLocationInfo] = useState(null);
   const [locationBusy, setLocationBusy] = useState(false);
   const [exemptIds, setExemptIds] = useState([]);
+  const [staffLink, setStaffLink] = useState(null);
   const pendingCountRef = useRef(0);
 
   useEffect(() => {
@@ -146,7 +147,7 @@ export default function ManagerPage() {
       const res = await fetch('/api/manager/location', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(coords),
+        body: JSON.stringify({ ...coords, radiusM: 800 }),
       });
       const data = await res.json();
       if (!data.success) {
@@ -167,6 +168,17 @@ export default function ManagerPage() {
       const data = await res.json();
       if (data.success) setExemptIds(data.staffIds || []);
       else if (res.status === 401) setAuthed(false);
+    } catch {
+      // ignore
+    }
+  }
+
+  async function loadStaffLink(staffId) {
+    setStaffLink(null);
+    try {
+      const res = await fetch(`/api/manager/staff-link?staffId=${encodeURIComponent(staffId)}`);
+      const data = await res.json();
+      if (data.success) setStaffLink(data);
     } catch {
       // ignore
     }
@@ -342,14 +354,14 @@ export default function ManagerPage() {
       <section className="mgr-section">
         <div className="mini-log-title">Café location</div>
         <p className="mgr-hint">
-          Staff can clock in/out only when they are at Osco Lounge.
-          Open this panel <strong>at the café</strong>, allow Location, then tap the button once.
+          Staff punch only near Osco Lounge. Set this <strong>while standing at the café</strong>.
+          Allowed area is about 800m (GPS indoors can be inaccurate).
         </p>
         {locationInfo ? (
           <div className="cafe-box">
             <div className={`cafe-status ${locationInfo.configured ? 'ok' : 'bad'}`}>
               {locationInfo.configured
-                ? `Location set — punches allowed within ~${locationInfo.location?.radiusM || 250}m`
+                ? `Location set — punches allowed within ~${locationInfo.location?.radiusM || 800}m`
                 : 'Not set — staff punches are blocked until you set it'}
             </div>
             {locationInfo.configured && locationInfo.location && (
@@ -417,7 +429,12 @@ export default function ManagerPage() {
               type="button"
               key={s.id}
               className={`staff-row ${selectedId === s.id ? 'active' : ''}`}
-              onClick={() => { setSelectedId(s.id); setSelectedDate(''); setMessage(''); }}
+              onClick={() => {
+                setSelectedId(s.id);
+                setSelectedDate('');
+                setMessage('');
+                loadStaffLink(s.id);
+              }}
             >
               <span>{s.name}</span>
               <span className="muted">
@@ -444,6 +461,29 @@ export default function ManagerPage() {
             >
               Delete staff
             </button>
+          </div>
+
+          <div className="cafe-box" style={{ marginBottom: 18 }}>
+            <div className="mini-log-title" style={{ marginBottom: 8 }}>Personal clock QR</div>
+            <p className="mgr-hint">
+              Print this QR for this staff. Scanning it opens <strong>their</strong> clock-in directly — no phone number, no manager code.
+            </p>
+            {staffLink?.qrImageUrl ? (
+              <div style={{ textAlign: 'center' }}>
+                <img
+                  src={staffLink.qrImageUrl}
+                  alt={`QR for ${detail.staff.name}`}
+                  width={220}
+                  height={220}
+                  style={{ borderRadius: 12, background: '#fff' }}
+                />
+                <div className="muted" style={{ marginTop: 8, wordBreak: 'break-all', fontSize: 11 }}>
+                  {staffLink.url}
+                </div>
+              </div>
+            ) : (
+              <div className="empty-note">Loading QR…</div>
+            )}
           </div>
 
           <div className="cafe-box" style={{ marginBottom: 18 }}>
