@@ -5,6 +5,7 @@ import Link from 'next/link';
 
 const MONTH_NAMES = ['January','February','March','April','May','June','July','August','September','October','November','December'];
 const STAFF_KEY = 'osco_staff';
+const BYPASS_KEY = 'osco_location_bypass';
 
 function pad(n) { return String(n).padStart(2, '0'); }
 
@@ -32,6 +33,26 @@ function clearStaff() {
   localStorage.removeItem('osco_staff_name');
 }
 
+function loadBypass(staffId) {
+  try {
+    const raw = localStorage.getItem(BYPASS_KEY);
+    if (!raw) return null;
+    const data = JSON.parse(raw);
+    if (!data?.token || data.staffId !== staffId) return null;
+    return data;
+  } catch {
+    return null;
+  }
+}
+
+function saveBypass(data) {
+  localStorage.setItem(BYPASS_KEY, JSON.stringify(data));
+}
+
+function clearBypass() {
+  localStorage.removeItem(BYPASS_KEY);
+}
+
 export default function Home() {
   const [staff, setStaff] = useState(null);
   const [ready, setReady] = useState(false);
@@ -43,9 +64,15 @@ export default function Home() {
   const [monthTotals, setMonthTotals] = useState(new Array(12).fill(0));
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
+  const [hasBypass, setHasBypass] = useState(false);
+  const [showBypassForm, setShowBypassForm] = useState(false);
+  const [bypassCode, setBypassCode] = useState('');
+  const [bypassBusy, setBypassBusy] = useState(false);
 
   useEffect(() => {
-    setStaff(loadStaff());
+    const s = loadStaff();
+    setStaff(s);
+    if (s?.id) setHasBypass(!!loadBypass(s.id));
     setReady(true);
   }, []);
 
@@ -56,6 +83,7 @@ export default function Home() {
 
   useEffect(() => {
     if (!staff?.id) return;
+    setHasBypass(!!loadBypass(staff.id));
     fetchSummary();
     const t = setInterval(fetchSummary, 30000);
     return () => clearInterval(t);
@@ -70,7 +98,9 @@ export default function Home() {
       const data = await res.json();
       if (data.needReregister) {
         clearStaff();
+        clearBypass();
         setStaff(null);
+        setHasBypass(false);
         return;
       }
       if (data.success) {
@@ -84,55 +114,94 @@ export default function Home() {
     }
   }
 
+  async function redeemBypass(e) {
+    e.preventDefault();
+    if (!staff?.id || bypassBusy) return;
+    setBypassBusy(true);
+    setMessage('');
+    try {
+      const res = await fetch('/api/bypass/redeem', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ staffId: staff.id, code: bypassCode }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!data.success) {
+        setMessage(data.message || 'Invalid code.');
+      } else {
+        saveBypass({ token: data.token, staffId: data.staffId, label: data.label });
+        setHasBypass(true);
+        setShowBypassForm(false);
+        setBypassCode('');
+        setMessage(data.message || 'This phone can punch without GPS.');
+      }
+    } catch {
+      setMessage('Network error — try again.');
+    }
+    setBypassBusy(false);
+  }
+
   async function submitPunch() {
     if (busy) return;
     setBusy(true);
     setMessage('');
     try {
-      if (!navigator.geolocation) {
-        setMessage('This phone does not support location. Use a phone with GPS.');
-        setBusy(false);
-        return;
-      }
+      const bypass = loadBypass(staff.id);
+      let payload = { staffId: staff.id };
 
-      let coords;
-      try {
-        coords = await new Promise((resolve, reject) => {
-          navigator.geolocation.getCurrentPosition(
-            (pos) =>
-              resolve({
-                lat: pos.coords.latitude,
-                lng: pos.coords.longitude,
-                accuracy: pos.coords.accuracy,
-              }),
-            (err) => reject(err),
-            { enableHighAccuracy: true, timeout: 20000, maximumAge: 0 }
-          );
-        });
-      } catch (err) {
-        if (err?.code === 1) {
-          setMessage('Allow location access for this site, then try again.');
-        } else if (err?.code === 3) {
-          setMessage('Location timed out. Step near a window and try again.');
-        } else {
-          setMessage('Could not read GPS. Try again near a window.');
+      if (bypass?.token) {
+        payload.bypassToken = bypass.token;
+      } else {
+        if (!navigator.geolocation) {
+          setMessage('Location is unavailable on this phone. Ask the manager for a device pass code.');
+          setShowBypassForm(true);
+          setBusy(false);
+          return;
         }
-        setBusy(false);
-        return;
+
+        try {
+          const coords = await new Promise((resolve, reject) => {
+            navigator.geolocation.getCurrentPosition(
+              (pos) =>
+                resolve({
+                  lat: pos.coords.latitude,
+                  lng: pos.coords.longitude,
+                  accuracy: pos.coords.accuracy,
+                }),
+              (err) => reject(err),
+              { enableHighAccuracy: true, timeout: 20000, maximumAge: 0 }
+            );
+          });
+          payload = { ...payload, ...coords };
+        } catch (err) {
+          if (err?.code === 1) {
+            setMessage('Allow location access, or ask the manager for a device pass code.');
+          } else if (err?.code === 3) {
+            setMessage('Location timed out. Try near a window, or ask for a device pass code.');
+          } else {
+            setMessage('Could not read GPS. Ask the manager for a device pass code.');
+          }
+          setShowBypassForm(true);
+          setBusy(false);
+          return;
+        }
       }
 
       const res = await fetch('/api/punch', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ staffId: staff.id, ...coords }),
+        body: JSON.stringify(payload),
       });
       const data = await res.json().catch(() => ({}));
       if (!data.success) {
         if (data.needReregister) {
           clearStaff();
+          clearBypass();
           setStaff(null);
+          setHasBypass(false);
         }
         setMessage(data.message || 'Could not record punch.');
+        if (data.needBypass) setShowBypassForm(true);
       } else {
         await fetchSummary();
       }
@@ -193,8 +262,46 @@ export default function Home() {
         <MonthlyView now={now} monthTotals={monthTotals} />
       )}
 
+      {hasBypass && (
+        <div className="helper-note" style={{ marginTop: 8 }}>
+          This phone has a GPS bypass pass.
+        </div>
+      )}
+
+      {showBypassForm && (
+        <form className="bypass-form" onSubmit={redeemBypass}>
+          <div className="mini-log-title">Device pass code</div>
+          <p className="mgr-hint" style={{ padding: '0 24px' }}>
+            Ask the manager for a one-time code for this broken-GPS phone.
+          </p>
+          <div style={{ padding: '0 24px' }}>
+            <input
+              value={bypassCode}
+              onChange={(e) => setBypassCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+              placeholder="6-digit code"
+              inputMode="numeric"
+              required
+            />
+            <button type="submit" disabled={bypassBusy || bypassCode.length < 6}>
+              {bypassBusy ? '…' : 'Unlock this phone'}
+            </button>
+            <button type="button" className="btn-ghost" onClick={() => setShowBypassForm(false)}>
+              Cancel
+            </button>
+          </div>
+        </form>
+      )}
+
       <div className="footnote">
         Clock-ins only work at Osco Lounge (location check).
+        {!hasBypass && (
+          <>
+            <br />
+            <button type="button" className="text-btn" onClick={() => setShowBypassForm(true)}>
+              Broken GPS? Enter device pass
+            </button>
+          </>
+        )}
         <br />
         <Link href="/manager" style={{ color: 'var(--gray)' }}>Manager</Link>
       </div>
