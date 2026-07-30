@@ -89,10 +89,30 @@ export default function Home() {
     setBusy(true);
     setMessage('');
     try {
+      let coords = {};
+      if (navigator.geolocation) {
+        try {
+          coords = await new Promise((resolve, reject) => {
+            navigator.geolocation.getCurrentPosition(
+              (pos) =>
+                resolve({
+                  lat: pos.coords.latitude,
+                  lng: pos.coords.longitude,
+                }),
+              (err) => reject(err),
+              { enableHighAccuracy: true, timeout: 20000, maximumAge: 15000 }
+            );
+          });
+        } catch {
+          // If café location mode is on, server will reject with a clear message.
+          coords = {};
+        }
+      }
+
       const res = await fetch('/api/punch', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ staffId: staff.id }),
+        body: JSON.stringify({ staffId: staff.id, ...coords }),
       });
       const data = await res.json().catch(() => ({}));
       if (!data.success) {
@@ -162,7 +182,7 @@ export default function Home() {
       )}
 
       <div className="footnote">
-        Clock-ins only work on Osco Lounge Wi-Fi.
+        Clock-ins only work at Osco Lounge (location check).
         <br />
         <Link href="/manager" style={{ color: 'var(--gray)' }}>Manager</Link>
       </div>

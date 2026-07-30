@@ -1,5 +1,12 @@
 import { NextResponse } from 'next/server';
-import { getStaffById, getOpenShift, clockIn, clockOut, getCafeWifiIpsSetting } from '../../../lib/db';
+import {
+  getStaffById,
+  getOpenShift,
+  clockIn,
+  clockOut,
+  getCafeWifiIpsSetting,
+  getCafeLocationSetting,
+} from '../../../lib/db';
 import {
   getClientIp,
   getAllowedCafeIpsFromEnv,
@@ -7,17 +14,17 @@ import {
   shouldRejectPunch,
   wifiRejectResponse,
 } from '../../../lib/wifi';
+import { checkCafeGeofence, parseCafeLocation } from '../../../lib/geofence';
 
 async function resolveAllowedIps() {
   const setting = await getCafeWifiIpsSetting();
-  if (setting.ips) return parseIpList(setting.ips);
+  if (setting.ips) return parseIpList([...getAllowedCafeIpsFromEnv(), ...parseIpList(setting.ips)]);
   return getAllowedCafeIpsFromEnv();
 }
 
 export async function POST(req) {
   try {
     const ip = getClientIp(req);
-    const allowed = await resolveAllowedIps();
 
     let body;
     try {
@@ -34,9 +41,29 @@ export async function POST(req) {
       );
     }
 
-    if (shouldRejectPunch(ip, allowed)) {
-      const reject = wifiRejectResponse(ip, allowed);
-      return NextResponse.json(reject.body, { status: reject.status });
+    const locationSetting = await getCafeLocationSetting();
+    const cafeLocation = parseCafeLocation(locationSetting.raw);
+
+    // Prefer stable café GPS geofence over Omantel's rotating public IP.
+    if (cafeLocation) {
+      const geo = checkCafeGeofence(cafeLocation, body.lat, body.lng);
+      if (!geo.ok) {
+        console.warn('[punch geofence]', { ip, reason: geo.reason, distanceM: geo.distanceM });
+        return NextResponse.json({ success: false, message: geo.reason }, { status: 403 });
+      }
+    } else {
+      const allowed = await resolveAllowedIps();
+      if (shouldRejectPunch(ip, allowed)) {
+        const reject = wifiRejectResponse(ip, allowed);
+        return NextResponse.json(
+          {
+            ...reject.body,
+            message:
+              'Not connected to Osco Lounge Wi-Fi. Ask the manager to set the café location in the Manager panel (recommended — stops IP changes from breaking punches).',
+          },
+          { status: reject.status }
+        );
+      }
     }
 
     const staff = await getStaffById(staffId);

@@ -46,6 +46,8 @@ export default function ManagerPage() {
   const [message, setMessage] = useState('');
   const [wifiInfo, setWifiInfo] = useState(null);
   const [wifiBusy, setWifiBusy] = useState(false);
+  const [locationInfo, setLocationInfo] = useState(null);
+  const [locationBusy, setLocationBusy] = useState(false);
   const pendingCountRef = useRef(0);
 
   useEffect(() => {
@@ -62,6 +64,7 @@ export default function ManagerPage() {
     if (!authed) return;
     loadStaff();
     loadWifi();
+    loadLocation();
     const t = setInterval(loadStaff, 10000);
     return () => clearInterval(t);
   }, [authed]);
@@ -96,6 +99,54 @@ export default function ManagerPage() {
     setStaffList([]);
     setSelectedId(null);
     setDetail(null);
+  }
+
+  async function loadLocation() {
+    try {
+      const res = await fetch('/api/manager/location');
+      const data = await res.json();
+      if (data.success) setLocationInfo(data);
+      else if (res.status === 401) setAuthed(false);
+    } catch {
+      // ignore
+    }
+  }
+
+  function readGps() {
+    return new Promise((resolve, reject) => {
+      if (!navigator.geolocation) {
+        reject(new Error('This phone does not support location.'));
+        return;
+      }
+      navigator.geolocation.getCurrentPosition(
+        (pos) => resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
+        (err) => reject(new Error(err.message || 'Location permission denied.')),
+        { enableHighAccuracy: true, timeout: 20000, maximumAge: 0 }
+      );
+    });
+  }
+
+  async function setCafeLocationHere() {
+    setLocationBusy(true);
+    setMessage('');
+    try {
+      const coords = await readGps();
+      const res = await fetch('/api/manager/location', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(coords),
+      });
+      const data = await res.json();
+      if (!data.success) {
+        setMessage(data.message || 'Could not save café location.');
+      } else {
+        setLocationInfo(data);
+        setMessage(data.message || 'Café location saved.');
+      }
+    } catch (e) {
+      setMessage(e.message || 'Could not read GPS. Allow location access and try again.');
+    }
+    setLocationBusy(false);
   }
 
   async function loadWifi() {
@@ -276,10 +327,53 @@ export default function ManagerPage() {
       </div>
 
       <section className="mgr-section">
-        <div className="mini-log-title">Café Wi-Fi IP</div>
+        <div className="mini-log-title">Café location (recommended)</div>
         <p className="mgr-hint">
-          Omantel may change the café public IP. Open this panel <strong>on Osco Lounge Wi-Fi</strong>
-          and tap the button if staff see “Not connected to Osco Lounge Wi-Fi.”
+          Omantel changes the café public IP often — that is normal for 5G modems.
+          The number printed on the modem (<code>192.168.8.1</code>) is only a local address and cannot be used online.
+          Set the café GPS location once while you are at Osco Lounge; staff punches then work by being at the café, not by IP.
+        </p>
+        {locationInfo ? (
+          <div className="wifi-box">
+            <div className={`wifi-status ${locationInfo.configured ? 'ok' : 'bad'}`}>
+              {locationInfo.configured
+                ? `Location set — punches use GPS (~${locationInfo.location?.radiusM || 250}m)`
+                : 'Not set yet — still using fragile Wi-Fi IP checks'}
+            </div>
+            {locationInfo.configured && locationInfo.location && (
+              <div className="wifi-row">
+                <span className="muted">Saved point</span>
+                <span className="mono">
+                  {locationInfo.location.lat.toFixed(5)}, {locationInfo.location.lng.toFixed(5)}
+                </span>
+              </div>
+            )}
+            <button type="button" disabled={locationBusy} onClick={setCafeLocationHere}>
+              {locationBusy ? 'Saving…' : locationInfo.configured ? 'Update café location here' : 'Set café location here'}
+            </button>
+            {message && /location|GPS|café location/i.test(message) && (
+              <div
+                className="helper-note"
+                style={{
+                  marginTop: 12,
+                  marginBottom: 0,
+                  color: /saved|Location set/i.test(message) ? 'var(--black)' : 'var(--red)',
+                }}
+              >
+                {message}
+              </div>
+            )}
+          </div>
+        ) : (
+          <div className="empty-note">Loading location status…</div>
+        )}
+      </section>
+
+      {!locationInfo?.configured && (
+      <section className="mgr-section">
+        <div className="mini-log-title">Café Wi-Fi IP (temporary)</div>
+        <p className="mgr-hint">
+          Only needed until café location is set. Omantel may change this IP at any time.
         </p>
         {wifiInfo ? (
           <div className="wifi-box">
@@ -316,6 +410,7 @@ export default function ManagerPage() {
           <div className="empty-note">Loading Wi-Fi status…</div>
         )}
       </section>
+      )}
 
       <section className="mgr-section">
         <div className="mini-log-title">Registration codes</div>
