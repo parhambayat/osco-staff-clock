@@ -61,13 +61,35 @@ body {
 .empty-note { color: var(--gray); font-size: 13px; padding: 4px 0 20px; }
 
 .year-label { font-size: 13px; color: var(--gray); margin-bottom: 18px; }
-.month-row { display: flex; align-items: center; justify-content: space-between; padding: 16px 4px; border-bottom: 1px solid var(--gray-light); }
+.month-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 16px 4px;
+  border: none;
+  border-bottom: 1px solid var(--gray-light);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
 .month-row:last-child { border-bottom: none; }
+.month-row:active { opacity: 0.75; }
 .month-name { font-size: 15px; font-weight: 600; display: flex; align-items: center; gap: 8px; }
 .month-row.current .month-name::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: var(--red); display: inline-block; }
 .month-row.current .month-name { color: var(--red-dark); }
+.month-row.selected { background: rgba(139, 0, 0, 0.04); }
 .month-hours { font-family: 'Space Mono', monospace; font-size: 15px; font-weight: 700; }
 .month-hours.empty { color: var(--gray-light); font-weight: 400; }
+.day-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
 
 .footnote { text-align: center; font-size: 11px; color: var(--gray-light); margin-top: 26px; padding: 0 24px; line-height: 1.6; }
 

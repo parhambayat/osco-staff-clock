@@ -42,7 +42,9 @@ export default function ManagerPage() {
   const [selectedId, setSelectedId] = useState(null);
   const [detail, setDetail] = useState(null);
   const [selectedDate, setSelectedDate] = useState('');
+  const [selectedMonth, setSelectedMonth] = useState(null);
   const [editShift, setEditShift] = useState(null);
+  const [manualEntry, setManualEntry] = useState(null);
   const [message, setMessage] = useState('');
   const [locationInfo, setLocationInfo] = useState(null);
   const [locationBusy, setLocationBusy] = useState(false);
@@ -262,6 +264,61 @@ export default function ManagerPage() {
     setBusy(false);
   }
 
+  function openManualEntry(seedDate) {
+    const year = new Date().getFullYear();
+    let datePart = seedDate || selectedDate;
+    if (!datePart && selectedMonth != null) {
+      datePart = `${year}-${pad(selectedMonth + 1)}-01`;
+    }
+    if (!datePart) {
+      const now = new Date();
+      datePart = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+    }
+    setManualEntry({
+      clock_in_local: `${datePart}T09:00`,
+      clock_out_local: `${datePart}T17:00`,
+    });
+    setMessage('');
+  }
+
+  async function saveManualEntry(e) {
+    e.preventDefault();
+    if (!selectedId || !manualEntry) return;
+    setBusy(true);
+    setMessage('');
+    try {
+      const res = await fetch('/api/manager/shifts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          staffId: selectedId,
+          clock_in: fromLocalInputValue(manualEntry.clock_in_local),
+          clock_out: manualEntry.clock_out_local
+            ? fromLocalInputValue(manualEntry.clock_out_local)
+            : null,
+        }),
+      });
+      const data = await res.json();
+      if (!data.success) setMessage(data.message || 'Could not create entry');
+      else {
+        setManualEntry(null);
+        setMessage('Manual entry created.');
+        await loadDetail(selectedId, selectedDate);
+        await loadStaff();
+      }
+    } catch {
+      setMessage('Network error');
+    }
+    setBusy(false);
+  }
+
+  function selectMonth(monthIndex) {
+    const next = selectedMonth === monthIndex ? null : monthIndex;
+    setSelectedMonth(next);
+    setSelectedDate('');
+    setMessage('');
+  }
+
   async function removeShift(id) {
     if (!confirm('Delete this shift?')) return;
     const res = await fetch(`/api/manager/shifts?id=${encodeURIComponent(id)}`, { method: 'DELETE' });
@@ -417,7 +474,12 @@ export default function ManagerPage() {
               type="button"
               key={s.id}
               className={`staff-row ${selectedId === s.id ? 'active' : ''}`}
-              onClick={() => { setSelectedId(s.id); setSelectedDate(''); setMessage(''); }}
+              onClick={() => {
+                setSelectedId(s.id);
+                setSelectedDate('');
+                setSelectedMonth(new Date().getMonth());
+                setMessage('');
+              }}
             >
               <span>{s.name}</span>
               <span className="muted">
@@ -481,61 +543,121 @@ export default function ManagerPage() {
             )}
           </div>
 
-          <div className="year-label">{new Date().getFullYear()} · monthly totals</div>
+          <div className="year-label">{new Date().getFullYear()} · tap a month to edit</div>
           {MONTH_NAMES.map((name, i) => {
             const has = detail.monthTotals[i] > 0;
+            const isSelected = selectedMonth === i;
+            const isCalendarCurrent = i === new Date().getMonth();
             return (
-              <div className={`month-row ${i === new Date().getMonth() ? 'current' : ''}`} key={name}>
+              <button
+                type="button"
+                className={`month-row ${isSelected || (selectedMonth == null && isCalendarCurrent) ? 'current' : ''} ${isSelected ? 'selected' : ''}`}
+                key={name}
+                onClick={() => selectMonth(i)}
+              >
                 <div className="month-name">{name}</div>
                 <div className={`month-hours ${!has ? 'empty' : ''}`}>
                   {has ? formatDur(detail.monthTotals[i]) : '—'}
                 </div>
-              </div>
+              </button>
             );
           })}
 
-          <div className="mini-log-title" style={{ marginTop: 28 }}>By day</div>
+          <div className="day-section-head" style={{ marginTop: 28 }}>
+            <div className="mini-log-title" style={{ margin: 0 }}>
+              By day
+              {selectedMonth != null ? ` · ${MONTH_NAMES[selectedMonth]}` : ''}
+            </div>
+            <button type="button" className="text-btn" onClick={() => openManualEntry()}>
+              + Manual entry
+            </button>
+          </div>
+          <p className="mgr-hint">
+            Add a missing clock-in/out for any date, or tap Edit on an existing shift.
+          </p>
           <input
             type="date"
             className="date-filter"
             value={selectedDate}
-            onChange={(e) => setSelectedDate(e.target.value)}
+            onChange={(e) => {
+              setSelectedDate(e.target.value);
+              if (e.target.value) {
+                const m = Number(e.target.value.split('-')[1]) - 1;
+                if (m >= 0 && m <= 11) setSelectedMonth(m);
+              }
+            }}
           />
 
-          {(selectedDate ? (detail.dayDetail ? [detail.dayDetail] : []) : detail.days).map((day) => (
+          {(selectedDate
+            ? (detail.dayDetail ? [detail.dayDetail] : [])
+            : detail.days.filter((day) => {
+                if (selectedMonth == null) return true;
+                const m = Number(String(day.date).split('-')[1]) - 1;
+                return m === selectedMonth;
+              })
+          ).map((day) => (
             <div key={day.date} className="day-block">
               <div className="day-head">
                 <strong>{day.date}</strong>
                 <span className="dur">{formatDur(day.seconds)}</span>
               </div>
-              {(day.shifts || []).map((s) => (
-                <div className="mini-log-entry" key={s.id}>
-                  <span className="times">
-                    {new Date(s.clock_in).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}
-                    {' → '}
-                    {s.clock_out
-                      ? new Date(s.clock_out).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })
-                      : 'open'}
-                  </span>
-                  <button
-                    type="button"
-                    className="text-btn"
-                    onClick={() =>
-                      setEditShift({
-                        id: s.id,
-                        clock_in_local: toLocalInputValue(s.clock_in),
-                        clock_out_local: s.clock_out ? toLocalInputValue(s.clock_out) : '',
-                      })
-                    }
-                  >
-                    Edit
+              {(day.shifts || []).length === 0 ? (
+                <div className="mini-log-entry">
+                  <span className="times muted">No shifts</span>
+                  <button type="button" className="text-btn" onClick={() => openManualEntry(day.date)}>
+                    Add
                   </button>
                 </div>
-              ))}
+              ) : (
+                (day.shifts || []).map((s) => (
+                  <div className="mini-log-entry" key={s.id}>
+                    <span className="times">
+                      {new Date(s.clock_in).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}
+                      {' → '}
+                      {s.clock_out
+                        ? new Date(s.clock_out).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })
+                        : 'open'}
+                    </span>
+                    <button
+                      type="button"
+                      className="text-btn"
+                      onClick={() =>
+                        setEditShift({
+                          id: s.id,
+                          clock_in_local: toLocalInputValue(s.clock_in),
+                          clock_out_local: s.clock_out ? toLocalInputValue(s.clock_out) : '',
+                        })
+                      }
+                    >
+                      Edit
+                    </button>
+                  </div>
+                ))
+              )}
             </div>
           ))}
 
-          {message && <div className="helper-note" style={{ color: /updated|deleted/i.test(message) ? 'var(--black)' : 'var(--red)' }}>{message}</div>}
+          {!selectedDate &&
+            selectedMonth != null &&
+            detail.days.filter((day) => Number(String(day.date).split('-')[1]) - 1 === selectedMonth).length === 0 && (
+              <div className="empty-note">
+                No days in {MONTH_NAMES[selectedMonth]} yet.{' '}
+                <button type="button" className="text-btn" onClick={() => openManualEntry()}>
+                  Add manual entry
+                </button>
+              </div>
+            )}
+
+          {message && (
+            <div
+              className="helper-note"
+              style={{
+                color: /updated|deleted|created/i.test(message) ? 'var(--black)' : 'var(--red)',
+              }}
+            >
+              {message}
+            </div>
+          )}
         </section>
       )}
 
@@ -559,6 +681,32 @@ export default function ManagerPage() {
             <button type="submit" disabled={busy}>{busy ? 'Saving…' : 'Save changes'}</button>
             <button type="button" className="btn-ghost" onClick={() => removeShift(editShift.id)}>Delete shift</button>
             <button type="button" className="btn-ghost" onClick={() => setEditShift(null)}>Cancel</button>
+          </form>
+        </div>
+      )}
+
+      {manualEntry && (
+        <div className="modal-backdrop" onClick={() => setManualEntry(null)}>
+          <form className="modal" onClick={(e) => e.stopPropagation()} onSubmit={saveManualEntry}>
+            <div className="brand" style={{ marginBottom: 12 }}>Manual entry</div>
+            <p className="mgr-hint" style={{ marginBottom: 8 }}>
+              Create a clock-in/out for {selected?.name || 'this staff'} on any date.
+            </p>
+            <label className="field-label">Clock in</label>
+            <input
+              type="datetime-local"
+              value={manualEntry.clock_in_local}
+              onChange={(e) => setManualEntry({ ...manualEntry, clock_in_local: e.target.value })}
+              required
+            />
+            <label className="field-label">Clock out (empty = still open)</label>
+            <input
+              type="datetime-local"
+              value={manualEntry.clock_out_local}
+              onChange={(e) => setManualEntry({ ...manualEntry, clock_out_local: e.target.value })}
+            />
+            <button type="submit" disabled={busy}>{busy ? 'Saving…' : 'Create entry'}</button>
+            <button type="button" className="btn-ghost" onClick={() => setManualEntry(null)}>Cancel</button>
           </form>
         </div>
       )}
