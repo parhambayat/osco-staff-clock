@@ -26,7 +26,29 @@ function toLocalInputValue(iso) {
 
 function fromLocalInputValue(val) {
   if (!val) return null;
-  return new Date(val).toISOString();
+  const d = new Date(val);
+  if (Number.isNaN(d.getTime())) return null;
+  return d.toISOString();
+}
+
+/** If out is earlier than in (night shift ending after midnight), push out to next day(s). */
+function resolveShiftTimes(clockInLocal, clockOutLocal) {
+  const clock_in = fromLocalInputValue(clockInLocal);
+  if (!clock_in) return { error: 'Invalid clock in time.' };
+  if (!clockOutLocal) return { clock_in, clock_out: null };
+
+  let outDate = new Date(clockOutLocal);
+  if (Number.isNaN(outDate.getTime())) return { error: 'Invalid clock out time.' };
+  const inDate = new Date(clock_in);
+  let safety = 0;
+  while (outDate.getTime() <= inDate.getTime() && safety < 2) {
+    outDate = new Date(outDate.getTime() + 24 * 60 * 60 * 1000);
+    safety += 1;
+  }
+  if (outDate.getTime() <= inDate.getTime()) {
+    return { error: 'Clock out must be after clock in.' };
+  }
+  return { clock_in, clock_out: outDate.toISOString() };
 }
 
 export default function ManagerPage() {
@@ -45,6 +67,7 @@ export default function ManagerPage() {
   const [selectedMonth, setSelectedMonth] = useState(null);
   const [editShift, setEditShift] = useState(null);
   const [manualEntry, setManualEntry] = useState(null);
+  const [formError, setFormError] = useState('');
   const [message, setMessage] = useState('');
   const [locationInfo, setLocationInfo] = useState(null);
   const [locationBusy, setLocationBusy] = useState(false);
@@ -237,29 +260,35 @@ export default function ManagerPage() {
   async function saveEdit(e) {
     e.preventDefault();
     setBusy(true);
+    setFormError('');
     setMessage('');
     try {
+      const times = resolveShiftTimes(editShift.clock_in_local, editShift.clock_out_local);
+      if (times.error) {
+        setFormError(times.error);
+        setBusy(false);
+        return;
+      }
       const res = await fetch('/api/manager/shifts', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           id: editShift.id,
-          clock_in: fromLocalInputValue(editShift.clock_in_local),
-          clock_out: editShift.clock_out_local
-            ? fromLocalInputValue(editShift.clock_out_local)
-            : null,
+          clock_in: times.clock_in,
+          clock_out: times.clock_out,
         }),
       });
       const data = await res.json();
-      if (!data.success) setMessage(data.message || 'Update failed');
+      if (!data.success) setFormError(data.message || 'Update failed');
       else {
         setEditShift(null);
+        setFormError('');
         setMessage('Shift updated.');
         await loadDetail(selectedId, selectedDate);
         await loadStaff();
       }
     } catch {
-      setMessage('Network error');
+      setFormError('Network error');
     }
     setBusy(false);
   }
@@ -278,36 +307,43 @@ export default function ManagerPage() {
       clock_in_local: `${datePart}T09:00`,
       clock_out_local: `${datePart}T17:00`,
     });
+    setFormError('');
     setMessage('');
   }
 
   async function saveManualEntry(e) {
-    e.preventDefault();
-    if (!selectedId || !manualEntry) return;
+    if (e && typeof e.preventDefault === 'function') e.preventDefault();
+    if (!selectedId || !manualEntry || busy) return;
     setBusy(true);
+    setFormError('');
     setMessage('');
     try {
+      const times = resolveShiftTimes(manualEntry.clock_in_local, manualEntry.clock_out_local);
+      if (times.error) {
+        setFormError(times.error);
+        setBusy(false);
+        return;
+      }
       const res = await fetch('/api/manager/shifts', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           staffId: selectedId,
-          clock_in: fromLocalInputValue(manualEntry.clock_in_local),
-          clock_out: manualEntry.clock_out_local
-            ? fromLocalInputValue(manualEntry.clock_out_local)
-            : null,
+          clock_in: times.clock_in,
+          clock_out: times.clock_out,
         }),
       });
-      const data = await res.json();
-      if (!data.success) setMessage(data.message || 'Could not create entry');
+      const data = await res.json().catch(() => ({ success: false, message: 'Bad response' }));
+      if (!data.success) setFormError(data.message || 'Could not create entry');
       else {
         setManualEntry(null);
+        setFormError('');
         setMessage('Manual entry created.');
         await loadDetail(selectedId, selectedDate);
         await loadStaff();
       }
     } catch {
-      setMessage('Network error');
+      setFormError('Network error');
     }
     setBusy(false);
   }
@@ -662,7 +698,7 @@ export default function ManagerPage() {
       )}
 
       {editShift && (
-        <div className="modal-backdrop" onClick={() => setEditShift(null)}>
+        <div className="modal-backdrop" onClick={() => { setEditShift(null); setFormError(''); }}>
           <form className="modal" onClick={(e) => e.stopPropagation()} onSubmit={saveEdit}>
             <div className="brand" style={{ marginBottom: 12 }}>Edit shift</div>
             <label className="field-label">Clock in</label>
@@ -678,15 +714,17 @@ export default function ManagerPage() {
               value={editShift.clock_out_local}
               onChange={(e) => setEditShift({ ...editShift, clock_out_local: e.target.value })}
             />
+            <p className="mgr-hint">If out is after midnight, same calendar day is OK — we save it as next morning.</p>
+            {formError && <div className="form-error">{formError}</div>}
             <button type="submit" disabled={busy}>{busy ? 'Saving…' : 'Save changes'}</button>
             <button type="button" className="btn-ghost" onClick={() => removeShift(editShift.id)}>Delete shift</button>
-            <button type="button" className="btn-ghost" onClick={() => setEditShift(null)}>Cancel</button>
+            <button type="button" className="btn-ghost" onClick={() => { setEditShift(null); setFormError(''); }}>Cancel</button>
           </form>
         </div>
       )}
 
       {manualEntry && (
-        <div className="modal-backdrop" onClick={() => setManualEntry(null)}>
+        <div className="modal-backdrop" onClick={() => { setManualEntry(null); setFormError(''); }}>
           <form className="modal" onClick={(e) => e.stopPropagation()} onSubmit={saveManualEntry}>
             <div className="brand" style={{ marginBottom: 12 }}>Manual entry</div>
             <p className="mgr-hint" style={{ marginBottom: 8 }}>
@@ -705,8 +743,12 @@ export default function ManagerPage() {
               value={manualEntry.clock_out_local}
               onChange={(e) => setManualEntry({ ...manualEntry, clock_out_local: e.target.value })}
             />
-            <button type="submit" disabled={busy}>{busy ? 'Saving…' : 'Create entry'}</button>
-            <button type="button" className="btn-ghost" onClick={() => setManualEntry(null)}>Cancel</button>
+            <p className="mgr-hint">Night shift tip: in 16:00 + out 00:30 same day → saved until next morning.</p>
+            {formError && <div className="form-error">{formError}</div>}
+            <button type="submit" disabled={busy}>
+              {busy ? 'Saving…' : 'Create entry'}
+            </button>
+            <button type="button" className="btn-ghost" onClick={() => { setManualEntry(null); setFormError(''); }}>Cancel</button>
           </form>
         </div>
       )}
