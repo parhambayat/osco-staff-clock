@@ -3,6 +3,7 @@ import {
   listShifts,
   updateShift,
   deleteShift,
+  createManualShift,
   getStaffById,
 } from '../../../../lib/db';
 import { requireManager } from '../../../../lib/auth';
@@ -71,6 +72,45 @@ export async function GET(req) {
     });
   } catch (e) {
     console.error('[manager/shifts GET]', e);
+    return NextResponse.json({ success: false, message: e.message }, { status: 500 });
+  }
+}
+
+export async function POST(req) {
+  try {
+    const auth = requireManager();
+    if (!auth.ok) {
+      return NextResponse.json({ success: false, message: 'Unauthorized' }, { status: 401 });
+    }
+
+    let body;
+    try {
+      body = await req.json();
+    } catch {
+      return NextResponse.json({ success: false, message: 'Invalid request.' }, { status: 400 });
+    }
+
+    const staffId = body.staffId || body.staff_id;
+    if (!staffId) {
+      return NextResponse.json({ success: false, message: 'staffId required.' }, { status: 400 });
+    }
+    if (!body.clock_in) {
+      return NextResponse.json({ success: false, message: 'Clock in is required.' }, { status: 400 });
+    }
+
+    const result = await createManualShift({
+      staffId,
+      clock_in: body.clock_in,
+      clock_out: body.clock_out,
+    });
+
+    if (result.error) {
+      return NextResponse.json({ success: false, message: result.error }, { status: 400 });
+    }
+
+    return NextResponse.json({ success: true, shift: result.shift });
+  } catch (e) {
+    console.error('[manager/shifts POST]', e);
     return NextResponse.json({ success: false, message: e.message }, { status: 500 });
   }
 }
