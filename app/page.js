@@ -328,6 +328,8 @@ export default function Home() {
 
       <div className="footnote">
         Clock-ins only work at Osco Lounge (location check).
+        <br />
+        Café day until 1:00am · auto clock-out at 12:40am if you forget.
         {!hasBypass && (
           <>
             <br />
