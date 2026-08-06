@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getStaffById, listShifts } from '../../../lib/db';
+import { getStaffById, listShifts, autoCloseOverdueOpenShifts } from '../../../lib/db';
 import { cafeDateKey, cafeMonthIndex, cafeYear } from '../../../lib/time';
 
 export async function GET(req) {
@@ -19,6 +19,9 @@ export async function GET(req) {
         { status: 404 }
       );
     }
+
+    // Apply nightly 00:40 auto clock-out even if the cron did not run yet.
+    await autoCloseOverdueOpenShifts({ staffId: staff.id });
 
     const data = await listShifts({
       staffId,
@@ -43,18 +46,13 @@ export async function GET(req) {
         openShift = s;
         const openSec = Math.max(0, (nowMs - inD.getTime()) / 1000);
         if (inYear === year) monthTotals[inMonth] += openSec;
-        // Open shift counts toward today if still running (even if started yesterday)
-        if (inKey === todayKey || cafeDateKey(new Date()) === todayKey) {
-          // Attribute today's portion: if started today, full openSec; if overnight, from midnight café
-          if (inKey === todayKey) {
-            todaySeconds += openSec;
-            todayShifts.push(s);
-          } else {
-            // Started before today — count from café midnight to now
-            const midnightCafe = new Date(`${todayKey}T00:00:00+04:00`);
-            todaySeconds += Math.max(0, (nowMs - midnightCafe.getTime()) / 1000);
-            todayShifts.push(s);
-          }
+        // Business day rolls at 01:00 — overnight before 01:00 stays on clock-in day.
+        if (inKey === todayKey) {
+          todaySeconds += openSec;
+          todayShifts.push(s);
+        } else {
+          // Still open from an earlier business day (should be rare after auto-close).
+          todayShifts.push(s);
         }
         return;
       }
@@ -79,6 +77,8 @@ export async function GET(req) {
       openShift,
       todayKey,
       cafeTz: 'Asia/Muscat',
+      businessDayStartsAt: '01:00',
+      autoClockOutAt: '00:40',
     });
   } catch (e) {
     console.error('[summary]', e);

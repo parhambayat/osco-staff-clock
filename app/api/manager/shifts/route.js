@@ -5,6 +5,7 @@ import {
   deleteShift,
   createManualShift,
   getStaffById,
+  autoCloseOverdueOpenShifts,
 } from '../../../../lib/db';
 import { requireManager } from '../../../../lib/auth';
 import { cafeDateKey, cafeMonthIndex, cafeYear } from '../../../../lib/time';
@@ -29,6 +30,8 @@ export async function GET(req) {
     if (!staff) {
       return NextResponse.json({ success: false, message: 'Staff not found' }, { status: 404 });
     }
+
+    await autoCloseOverdueOpenShifts({ staffId });
 
     const shifts = await listShifts({
       staffId,

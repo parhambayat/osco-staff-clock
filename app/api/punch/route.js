@@ -7,6 +7,7 @@ import {
   getCafeLocationSetting,
   isValidLocationBypass,
   isStaffLocationExempt,
+  autoCloseOverdueOpenShifts,
 } from '../../../lib/db';
 import { checkCafeGeofence, parseCafeLocation, shouldSkipGeofence } from '../../../lib/geofence';
 
@@ -76,6 +77,10 @@ export async function POST(req) {
         { status: 404 }
       );
     }
+
+    // Close forgotten overnight opens at 00:40 before toggling,
+    // so the next punch starts a fresh clock-in instead of a huge clock-out.
+    await autoCloseOverdueOpenShifts({ staffId: staff.id });
 
     const open = await getOpenShift(staff.id);
     if (open) {

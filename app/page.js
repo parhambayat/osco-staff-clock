@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
+import { cafeDateKey } from '../lib/time';
 
 const MONTH_NAMES = ['January','February','March','April','May','June','July','August','September','October','November','December'];
 const STAFF_KEY = 'osco_staff';
@@ -62,6 +63,7 @@ export default function Home() {
   const [openShift, setOpenShift] = useState(null);
   const [todayShifts, setTodayShifts] = useState([]);
   const [todaySeconds, setTodaySeconds] = useState(0);
+  const [todayKey, setTodayKey] = useState('');
   const [monthTotals, setMonthTotals] = useState(new Array(12).fill(0));
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
@@ -151,6 +153,7 @@ export default function Home() {
         setOpenShift(data.openShift);
         setTodayShifts(data.todayShifts);
         setTodaySeconds(data.todaySeconds);
+        setTodayKey(data.todayKey || '');
         setMonthTotals(data.monthTotals);
       }
     } catch {
@@ -243,7 +246,9 @@ export default function Home() {
   const liveTodaySeconds = (() => {
     if (!openShift) return todaySeconds;
     const openIn = new Date(openShift.clock_in);
-    if (openIn.toDateString() !== now.toDateString()) return todaySeconds;
+    const businessToday = todayKey || cafeDateKey(now);
+    // Keep counting overnight until 01:00 café business-day rollover.
+    if (cafeDateKey(openIn) !== businessToday) return todaySeconds;
     const completedOnly = todayShifts
       .filter((s) => s.clock_out)
       .reduce((sum, s) => sum + (new Date(s.clock_out) - new Date(s.clock_in)) / 1000, 0);
